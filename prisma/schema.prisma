@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String    // Hashed password
+  name                String
+  jobberAccessToken   String?   // Jobber OAuth access token
+  jobberRefreshToken  String?   // Jobber OAuth refresh token
+  jobberTokenExpiresAt DateTime? // Token expiration time
+  jobberAccountId     String?   // Jobber account ID
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([email])
+  @@index([jobberAccountId])
+  @@map("users")
+}
+
+model Client {
+  id                           String    @id @default(uuid())
+  jId                          String    @unique
+  createdDate                  DateTime?
+  isCompany                    Boolean   @default(false)
+  displayName                  String?
+  companyName                  String?
+  firstName                    String?
+  lastName                     String?
+  email                        String?
+  emailsJson                   String?
+  mainPhone                    String?
+  workPhone                    String?
+  mobilePhone                  String?
+  homePhone                    String?
+  faxPhone                     String?
+  otherPhone                   String?
+  phonesJson                   String?
+  tags                         String?
+  notesJson                    String?
+  noteAttachmentsJson          String?
+  billingStreet1               String?
+  billingStreet2               String?
+  billingCity                  String?
+  billingState                 String?
+  billingCountry               String?
+  billingZip                   String?
+  servicePropertyName          String?
+  serviceStreet1               String?
+  serviceStreet2               String?
+  serviceCity                  String?
+  serviceState                 String?
+  serviceCountry               String?
+  serviceZip                   String?
+  cftHavePets                  String?
+  cftHaveKids                  String?
+  cftTrashCanInventory         String?
+  cftAreasToAvoid              String?
+  cfsChangeSheets              String?
+  cftPreferredTimeRecurring    String?
+  cfsPreferredTimeContact      String?
+  cftTypeOfProperty            String?
+  cftAdditionalInfo            String?
+  cftResponsibidProfile        String?
+  pftAddressAdditionalInfo     String?
+  pftApartmentNumber           String?
+  pftFootage                   String?
+  pftNotes                     String?
+  receivesAutoVisitReminders   Boolean   @default(false)
+  receivesAutoJobFollowups     Boolean   @default(false)
+  receivesAutoQuoteFollowups   Boolean   @default(false)
+  receivesAutoInvoiceFollowups Boolean   @default(false)
+  archived                     Boolean   @default(false)
+  textMessageEnabledPhone      String?
+  leadSource                   String?
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  @@index([email])
+  @@index([jId])
+  @@map("clients")
+}
+
+model Quote {
+  id          String  @id @default(uuid())
+  jId         String  @unique
+  quoteNumber String?
+
+  // Client Info (from quote.client)
+  clientJId   String?
+  clientName  String?
+  clientEmail String?
+  clientPhone String?
+
+  // Property Info (from quote.property)
+  servicePropertyName String?
+  serviceStreet       String?
+  serviceCity         String?
+  serviceProvince     String?
+  serviceZip          String?
+  serviceCountry      String?
+
+  // Quote Basic Info
+  title       String?
+  status      String?
+  salesperson String?
+
+  // Amounts (from quote.amounts)
+  subtotal         String?
+  total            String?
+  discount         String?
+  collectedDeposit String?
+  requiredDeposit  String?
+
+  // Status-Based Dates (conditional based on quoteStatus)
+  draftedDate          String?
+  sentDate             String?
+  changesRequestedDate String?
+  approvedDate         String?
+  convertedDate        String?
+  archivedDate         String?
+
+  // Other Dates
+  sentAt            DateTime?
+  clientHubViewedAt String?
+  createdAt         DateTime?
+  updatedAt         DateTime?
+
+  // Line Items (JSON backup + formatted)
+  lineItemsJson String?
+  lineItems     String?
+
+  // Job Numbers (from quote.jobs)
+  jobNumbers String?
+
+  // Custom Fields (Label-based mapping from workflow)
+  timeEstimated          String?
+  desiredFrequency       String?
+  typeOfCleaning         String?
+  exactSqFt              String?
+  additionalRequest      String?
+  zone                   String?
+  dirtScale              String?
+  birthdayMonth          String?
+  referredBy             String?
+  typeOfProperty         String?
+  parkingDetails         String?
+  squareFoot             String?
+  frequency              String?
+  preferredTimeOfContact String?
+
+  // JSON Backups (Complete data)
+  customFieldsJson String?
+  clientJson       String?
+  propertyJson     String?
+  amountsJson      String?
+
+  // Metadata
+  leadSource String?
+  sentTo     String?
+  sentByUser String?
+
+  // Timestamps
+  dbCreatedAt DateTime @default(now())
+  dbUpdatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([clientJId])
+  @@index([quoteNumber])
+  @@index([status])
+  @@map("quotes")
+}
+
+model Tag {
+  id                  String   @id @default(uuid())
+  jId                 String   @unique
+  label               String
+  clientJId           String?
+  replied             Boolean  @default(false)
+  statusForAutomation String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([clientJId])
+  @@index([label])
+  @@index([replied])
+  @@map("tags")
+}
+
+model Job {
+  id          String   @id @default(uuid())
+  jId         String   @unique // Jobber Job ID (EncodedId)
+  jobNumber   String?
+  jobType     String?  // "ONE_TIME" or "RECURRING"
+  title       String?
+  jobStatus   String?  // draft, scheduled, in_progress, completed, archived, etc.
+
+  // Client Info (from job.client)
+  clientJId   String?
+  clientName  String?
+  clientEmail String?
+  clientPhone String?
+
+  // Property Info (from job.property)
+  servicePropertyName String?
+  serviceStreet       String?
+  serviceCity         String?
+  serviceProvince     String?
+  serviceZip          String?
+  serviceCountry      String?
+
+  // Billing Info
+  billingType   String?
+  billingStreet String?
+  billingCity   String?
+  billingProvince String?
+  billingZip    String?
+
+  // Dates
+  createdAt         DateTime?
+  startAt           DateTime?
+  endAt             DateTime?
+  createdDate       String?  // Formatted: yyyy-MM-dd
+  scheduleStartDate String?  // Formatted: yyyy-MM-dd
+  scheduleEndDate   String?  // Formatted: yyyy-MM-dd
+  closedDate        String?  // Formatted: yyyy-MM-dd
+
+  // Recurring-specific fields (nullable - only for RECURRING)
+  visitFrequency     String?  // visits.totalCount
+  billingFrequency   String?
+  automaticInvoicing  String?
+  visitsAssignedTo   String?
+  completedVisits    String?
+  startTime          String?  // HH:MM:SS from last visit
+  endTime            String?  // HH:MM:SS from last visit
+
+  // Line Items
+  lineItemsJson String?  // Complete lineItems array as JSON
+  lineItems     String?  // Formatted string for display
+
+  // Invoices
+  numberOfInvoices String?  // Comma-separated invoice numbers
+  invoicesJson     String?  // Complete invoices array as JSON
+
+  // Quote
+  quoteNumber String?
+
+  // Salesperson
+  salesperson String?  // firstName + lastName
+
+  // Instructions
+  instructions            String?
+  additionalInstructions String?
+
+  // Custom Fields (Label-based mapping - same as Quote workflow)
+  typeOfProperty      String?
+  frequency           String?
+  referredBy          String?
+  birthdayMonth       String?
+  typeOfCleaning      String?
+  hours               String?
+  cleaningInstructions String?
+  howToGetInTheHouse  String?
+  detailToGetInTheHouse String?
+  cleanInsideOfTheStove String?
+  cleanInsideOfTheFridge String?
+  windowsToBeCleaned  String?
+  glassDoorsToBeCleaned String?
+  typerOfProductsToUse String?
+  squareFoot          String?
+  exactSqFt           String?
+  zone                String?
+  parkingDetails      String?
+  responsibidProfile  String?
+  preferredTimeOfContact String?
+  pets                String?
+  clientsProductsNotes String?
+  trashCanInventory   String?
+  changeSheets        String?
+  cleaningTech        String?
+
+  // JSON Backups (Complete data)
+  customFieldsJson String?  // All custom fields as JSON
+  clientJson       String?  // Complete client object as JSON
+  propertyJson     String?  // Complete property object as JSON
+  visitsJson       String?  // Complete visits array as JSON
+
+  // Totals
+  total String?  // Sum of lineItems.totalPrice
+
+  // Timestamps
+  dbCreatedAt DateTime @default(now())
+  dbUpdatedAt DateTime @updatedAt
+
+  // Indexes
+  @@index([clientJId])
+  @@index([jobNumber])
+  @@index([jobType])
+  @@index([jobStatus])
+  @@map("jobs")
+}
