@@ -7,16 +7,16 @@ datasource db {
 }
 
 model User {
-  id                   String    @id @default(uuid())
-  email                String    @unique
-  password             String // Hashed password
-  name                 String
-  jobberAccessToken    String? // Jobber OAuth access token
-  jobberRefreshToken   String? // Jobber OAuth refresh token
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String    // Hashed password
+  name                String
+  jobberAccessToken   String?   // Jobber OAuth access token
+  jobberRefreshToken  String?   // Jobber OAuth refresh token
   jobberTokenExpiresAt DateTime? // Token expiration time
-  jobberAccountId      String? // Jobber account ID
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  jobberAccountId     String?   // Jobber account ID
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([email])
   @@index([jobberAccountId])
@@ -193,12 +193,12 @@ model Tag {
 }
 
 model Job {
-  id        String  @id @default(uuid())
-  jId       String  @unique // Jobber Job ID (EncodedId)
-  jobNumber String?
-  jobType   String? // "ONE_TIME" or "RECURRING"
-  title     String?
-  jobStatus String? // draft, scheduled, in_progress, completed, archived, etc.
+  id          String   @id @default(uuid())
+  jId         String   @unique // Jobber Job ID (EncodedId)
+  jobNumber   String?
+  jobType     String?  // "ONE_TIME" or "RECURRING"
+  title       String?
+  jobStatus   String?  // draft, scheduled, in_progress, completed, archived, etc.
 
   // Client Info (from job.client)
   clientJId   String?
@@ -215,83 +215,83 @@ model Job {
   serviceCountry      String?
 
   // Billing Info
-  billingType     String?
-  billingStreet   String?
-  billingCity     String?
+  billingType   String?
+  billingStreet String?
+  billingCity   String?
   billingProvince String?
-  billingZip      String?
+  billingZip    String?
 
   // Dates
   createdAt         DateTime?
   startAt           DateTime?
   endAt             DateTime?
-  createdDate       String? // Formatted: yyyy-MM-dd
-  scheduleStartDate String? // Formatted: yyyy-MM-dd
-  scheduleEndDate   String? // Formatted: yyyy-MM-dd
-  closedDate        String? // Formatted: yyyy-MM-dd
+  createdDate       String?  // Formatted: yyyy-MM-dd
+  scheduleStartDate String?  // Formatted: yyyy-MM-dd
+  scheduleEndDate   String?  // Formatted: yyyy-MM-dd
+  closedDate        String?  // Formatted: yyyy-MM-dd
 
   // Recurring-specific fields (nullable - only for RECURRING)
-  visitFrequency     String? // visits.totalCount
+  visitFrequency     String?  // visits.totalCount
   billingFrequency   String?
-  automaticInvoicing String?
+  automaticInvoicing  String?
   visitsAssignedTo   String?
   completedVisits    String?
-  startTime          String? // HH:MM:SS from last visit
-  endTime            String? // HH:MM:SS from last visit
+  startTime          String?  // HH:MM:SS from last visit
+  endTime            String?  // HH:MM:SS from last visit
 
   // Line Items
-  lineItemsJson String? // Complete lineItems array as JSON
-  lineItems     String? // Formatted string for display
+  lineItemsJson String?  // Complete lineItems array as JSON
+  lineItems     String?  // Formatted string for display
 
   // Invoices
-  numberOfInvoices String? // Comma-separated invoice numbers
-  invoicesJson     String? // Complete invoices array as JSON
+  numberOfInvoices String?  // Comma-separated invoice numbers
+  invoicesJson     String?  // Complete invoices array as JSON
 
   // Quote
   quoteNumber String?
 
   // Salesperson
-  salesperson String? // firstName + lastName
+  salesperson String?  // firstName + lastName
 
   // Instructions
-  instructions           String?
+  instructions            String?
   additionalInstructions String?
 
   // Custom Fields (Label-based mapping - same as Quote workflow)
-  typeOfProperty         String?
-  frequency              String?
-  referredBy             String?
-  birthdayMonth          String?
-  typeOfCleaning         String?
-  hours                  String?
-  cleaningInstructions   String?
-  howToGetInTheHouse     String?
-  detailToGetInTheHouse  String?
-  cleanInsideOfTheStove  String?
+  typeOfProperty      String?
+  frequency           String?
+  referredBy          String?
+  birthdayMonth       String?
+  typeOfCleaning      String?
+  hours               String?
+  cleaningInstructions String?
+  howToGetInTheHouse  String?
+  detailToGetInTheHouse String?
+  cleanInsideOfTheStove String?
   cleanInsideOfTheFridge String?
-  windowsToBeCleaned     String?
-  glassDoorsToBeCleaned  String?
-  typerOfProductsToUse   String?
-  squareFoot             String?
-  exactSqFt              String?
-  zone                   String?
-  parkingDetails         String?
-  responsibidProfile     String?
+  windowsToBeCleaned  String?
+  glassDoorsToBeCleaned String?
+  typerOfProductsToUse String?
+  squareFoot          String?
+  exactSqFt           String?
+  zone                String?
+  parkingDetails      String?
+  responsibidProfile  String?
   preferredTimeOfContact String?
-  pets                   String?
-  clientsProductsNotes   String?
-  trashCanInventory      String?
-  changeSheets           String?
-  cleaningTech           String?
+  pets                String?
+  clientsProductsNotes String?
+  trashCanInventory   String?
+  changeSheets        String?
+  cleaningTech        String?
 
   // JSON Backups (Complete data)
-  customFieldsJson String? // All custom fields as JSON
-  clientJson       String? // Complete client object as JSON
-  propertyJson     String? // Complete property object as JSON
-  visitsJson       String? // Complete visits array as JSON
+  customFieldsJson String?  // All custom fields as JSON
+  clientJson       String?  // Complete client object as JSON
+  propertyJson     String?  // Complete property object as JSON
+  visitsJson       String?  // Complete visits array as JSON
 
   // Totals
-  total String? // Sum of lineItems.totalPrice
+  total String?  // Sum of lineItems.totalPrice
 
   // Timestamps
   dbCreatedAt DateTime @default(now())
@@ -306,74 +306,31 @@ model Job {
 }
 
 model TeamMember {
-  id                    String   @id @default(uuid())
+  id                    String    @id @default(uuid())
   photo                 String?
   name                  String
-  slackId               String?  @map("slack_id")
+  slackId               String?   @map("slack_id")
   type                  String
   status                String
-  employmentType        String   @map("employment_type")
+  employmentType        String    @map("employment_type")
   email                 String
   phone                 String
   address               String
   birthday              String
-  primaryLanguage       String   @map("primary_language")
-  trainingStartDate     String?  @map("training_start_date")
-  trainingEndDate       String?  @map("training_end_date")
-  workStartDate         String?  @map("work_start_date")
-  lastMinuteCallOffs    Int      @default(0) @map("last_minute_call_offs")
-  arrivingLate          Int      @default(0) @map("arriving_late")
-  excusedTimeOffs       Int      @default(0) @map("excused_time_offs")
-  complaints            Int      @default(0)
-  npsMonthly            Int      @default(0) @map("nps_monthly")
-  npsAverage            Int      @default(0) @map("nps_average")
-  googleReviewsObtained Int      @default(0) @map("google_reviews_obtained")
-  starOfMonth           Boolean  @default(false) @map("star_of_month")
-  createdAt             DateTime @default(now()) @map("created_at")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  kpiEntries     KpiEntry[]
-  inventoryNotes InventoryNote[]
+  primaryLanguage       String    @map("primary_language")
+  trainingStartDate     String?   @map("training_start_date")
+  trainingEndDate       String?   @map("training_end_date")
+  workStartDate         String?   @map("work_start_date")
+  lastMinuteCallOffs    Int       @default(0) @map("last_minute_call_offs")
+  arrivingLate          Int       @default(0) @map("arriving_late")
+  excusedTimeOffs       Int       @default(0) @map("excused_time_offs")
+  complaints            Int       @default(0)
+  npsMonthly            Int       @default(0) @map("nps_monthly")
+  npsAverage            Int       @default(0) @map("nps_average")
+  googleReviewsObtained Int       @default(0) @map("google_reviews_obtained")
+  starOfMonth           Boolean   @default(false) @map("star_of_month")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   @@map("team_members")
-}
-
-model KpiEntry {
-  id           String   @id @default(uuid())
-  teamMemberId String   @map("team_member_id")
-  kpiType      String   @map("kpi_type")
-  date         String
-  description  String
-  cost         String?
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
-
-  @@map("kpi_entries")
-}
-
-model InventoryNote {
-  id           String   @id @default(uuid())
-  noteText     String   @map("note_text")
-  nyTimestamp  String   @map("ny_timestamp")
-  noteType     String   @default("general") @map("note_type")
-  teamMemberId String?  @map("team_member_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  teamMember TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
-
-  @@map("inventory_notes")
-}
-
-model InventoryTechnicianPurchase {
-  id           String   @id @default(uuid())
-  technicianId String   @map("technician_id")
-  purchaseDate String   @map("purchase_date")
-  itemsRaw     String   @map("items_raw")
-  itemsParsed  Json?    @map("items_parsed")
-  isCompleted  Boolean  @default(false) @map("is_completed")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  @@map("inventory_technician_purchases")
 }

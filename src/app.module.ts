@@ -11,6 +11,7 @@ import { ApiModule } from './api/api.module';
 import { QuotesModule } from './quotes/quotes.module';
 import { TagsModule } from './tags/tags.module';
 import { JobsModule } from './jobs/jobs.module';
+import { TeamMembersModule } from './team-members/team-members.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { JobsModule } from './jobs/jobs.module';
     QuotesModule,
     TagsModule,
     JobsModule,
+    TeamMembersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
