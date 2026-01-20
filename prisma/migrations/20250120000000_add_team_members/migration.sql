@@ -1,0 +1,30 @@
+-- CreateTable
+CREATE TABLE IF NOT EXISTS "team_members" (
+    "id" TEXT NOT NULL,
+    "photo" TEXT,
+    "name" TEXT NOT NULL,
+    "slackId" TEXT,
+    "type" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "employmentType" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "address" TEXT NOT NULL,
+    "birthday" TEXT NOT NULL,
+    "primaryLanguage" TEXT NOT NULL,
+    "trainingStartDate" TEXT,
+    "trainingEndDate" TEXT,
+    "workStartDate" TEXT,
+    "lastMinuteCallOffs" INTEGER NOT NULL DEFAULT 0,
+    "arrivingLate" INTEGER NOT NULL DEFAULT 0,
+    "excusedTimeOffs" INTEGER NOT NULL DEFAULT 0,
+    "complaints" INTEGER NOT NULL DEFAULT 0,
+    "npsMonthly" INTEGER NOT NULL DEFAULT 0,
+    "npsAverage" INTEGER NOT NULL DEFAULT 0,
+    "googleReviewsObtained" INTEGER NOT NULL DEFAULT 0,
+    "starOfMonth" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "team_members_pkey" PRIMARY KEY ("id")
+);
