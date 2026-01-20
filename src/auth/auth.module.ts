@@ -1,10 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JobberOAuthService } from './jobber/jobber-oauth.service';
 import { JobberOAuthController } from './jobber/jobber-oauth.controller';
@@ -22,10 +23,10 @@ import { JobberModule } from '../jobber/jobber.module';
       }),
       inject: [ConfigService],
     }),
-    JobberModule,
+    forwardRef(() => JobberModule),
   ],
   controllers: [AuthController, JobberOAuthController],
-  providers: [AuthService, JwtStrategy, JobberOAuthService],
-  exports: [AuthService, JobberOAuthService],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, JobberOAuthService],
+  exports: [AuthService, JobberOAuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

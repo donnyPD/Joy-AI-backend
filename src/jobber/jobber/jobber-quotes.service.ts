@@ -185,4 +185,87 @@ export class JobberQuotesService {
       throw error;
     }
   }
+
+  async getAllQuotes(first: number = 100, after?: string, accessToken?: string) {
+    const query = `
+      query GetAllQuotes($first: Int!, $after: String) {
+        quotes(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            quoteNumber
+            title
+            quoteStatus
+            createdAt
+            updatedAt
+            amounts {
+              subtotal
+              total
+            }
+            client {
+              id
+              name
+              firstName
+              lastName
+              companyName
+            }
+            property {
+              id
+              name
+              address {
+                street
+                city
+                province
+                postalCode
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await this.jobberApi.execute<{ data: unknown }>(
+        query,
+        { first, after },
+        accessToken,
+      );
+
+      if ((response.data as any).errors) {
+        const errors = (response.data as any).errors;
+        this.logger.error('GraphQL errors:', errors);
+        
+        const throttledError = errors.find((e: any) => e.extensions?.code === 'THROTTLED');
+        if (throttledError) {
+          this.logger.warn('⚠️ Jobber API rate limit exceeded');
+          const error: any = new Error('Jobber API rate limit exceeded. Please wait a moment and try again.');
+          error.status = 429;
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          throw error;
+        }
+        
+        const errorMessages = errors.map((e: any) => e.message).join(', ');
+        const error: any = new Error(`Jobber API error: ${errorMessages}`);
+        error.status = 502;
+        error.code = 'JOBBER_API_ERROR';
+        throw error;
+      }
+
+      return response.data as any;
+    } catch (error: any) {
+      this.logger.error('Error fetching quotes:', error);
+      
+      if (error.status) {
+        throw error;
+      }
+      
+      const httpError: any = new Error(error.message || 'Failed to fetch quotes from Jobber API');
+      httpError.status = 502;
+      httpError.code = 'JOBBER_API_ERROR';
+      throw httpError;
+    }
+  }
 }

@@ -175,4 +175,93 @@ export class JobberClientsService {
       throw error;
     }
   }
+
+  async getAllClients(first: number = 100, after?: string, accessToken?: string) {
+    const query = `
+      query GetAllClients($first: Int!, $after: String) {
+        clients(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            createdAt
+            name
+            firstName
+            lastName
+            companyName
+            emails {
+              address
+              primary
+            }
+            phones {
+              number
+              primary
+              description
+            }
+            billingAddress {
+              street
+              city
+              province
+              postalCode
+              country
+            }
+            tags {
+              nodes {
+                id
+                label
+              }
+            }
+            isArchived
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await this.jobberApi.execute<{ data: unknown }>(
+        query,
+        { first, after },
+        accessToken,
+      );
+
+      if ((response.data as any).errors) {
+        const errors = (response.data as any).errors;
+        this.logger.error('GraphQL errors:', errors);
+        
+        // Check for specific error types
+        const throttledError = errors.find((e: any) => e.extensions?.code === 'THROTTLED');
+        if (throttledError) {
+          this.logger.warn('⚠️ Jobber API rate limit exceeded');
+          const error: any = new Error('Jobber API rate limit exceeded. Please wait a moment and try again.');
+          error.status = 429; // Too Many Requests
+          error.code = 'RATE_LIMIT_EXCEEDED';
+          throw error;
+        }
+        
+        // Check for other common errors
+        const errorMessages = errors.map((e: any) => e.message).join(', ');
+        const error: any = new Error(`Jobber API error: ${errorMessages}`);
+        error.status = 502; // Bad Gateway
+        error.code = 'JOBBER_API_ERROR';
+        throw error;
+      }
+
+      return response.data as any;
+    } catch (error: any) {
+      this.logger.error('Error fetching clients:', error);
+      
+      // If error already has status, rethrow it
+      if (error.status) {
+        throw error;
+      }
+      
+      // For network errors or other issues
+      const httpError: any = new Error(error.message || 'Failed to fetch clients from Jobber API');
+      httpError.status = 502;
+      httpError.code = 'JOBBER_API_ERROR';
+      throw httpError;
+    }
+  }
 }

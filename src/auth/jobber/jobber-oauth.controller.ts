@@ -34,12 +34,12 @@ export class JobberOAuthController {
 
       // Redirect to frontend with success message
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      console.log('Redirecting to:', `${frontendUrl}/dashboard?connected=true`);
-      res.redirect(`${frontendUrl}/dashboard?connected=true`);
+      console.log('Redirecting to:', `${frontendUrl}/settings?connected=true`);
+      res.redirect(`${frontendUrl}/settings?connected=true`);
     } catch (error: any) {
       console.error('❌ OAuth callback error:', error.message);
       const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      res.redirect(`${frontendUrl}/dashboard?error=${encodeURIComponent(error.message)}`);
+      res.redirect(`${frontendUrl}/settings?error=${encodeURIComponent(error.message)}`);
     }
   }
 
