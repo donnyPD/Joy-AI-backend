@@ -20,6 +20,17 @@ export class KpiEntriesService {
     }
   }
 
+  async findAll(): Promise<KpiEntry[]> {
+    try {
+      return this.prisma.kpiEntry.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (error) {
+      this.logger.error(`Error fetching all KPI entries: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   async create(data: Prisma.KpiEntryCreateInput): Promise<KpiEntry> {
     try {
       const entry = await this.prisma.kpiEntry.create({
