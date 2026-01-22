@@ -17,11 +17,15 @@ console.log('✅ DATABASE_URL loaded successfully');
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { raw } from 'body-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  // Stripe webhook requires raw body for signature verification
+  app.use('/api/billing/webhook', raw({ type: 'application/json' }));
+
   // Enable CORS
   app.enableCors();
   

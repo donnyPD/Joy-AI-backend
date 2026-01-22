@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "team_members" (
+CREATE TABLE IF NOT EXISTS "team_members" (
     "id" TEXT NOT NULL,
     "photo" TEXT,
     "name" TEXT NOT NULL,
