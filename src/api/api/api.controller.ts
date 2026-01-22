@@ -14,6 +14,7 @@ import { InventoryFormSubmissionsService } from '../../inventory-form-submission
 import { CustomMetricDefinitionsService } from '../../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.service';
 import { TeamMemberTypesService } from '../../team-member-types/team-member-types/team-member-types.service';
 import { TeamMemberStatusesService } from '../../team-member-statuses/team-member-statuses/team-member-statuses.service';
+import { SettingsService } from '../../settings/settings/settings.service';
 
 @Controller()
 export class ApiController {
@@ -33,6 +34,7 @@ export class ApiController {
     private customMetricDefinitionsService: CustomMetricDefinitionsService,
     private teamMemberTypesService: TeamMemberTypesService,
     private teamMemberStatusesService: TeamMemberStatusesService,
+    private settingsService: SettingsService,
   ) {}
 
   @Get('status')
@@ -1202,6 +1204,32 @@ export class ApiController {
         throw error;
       }
       console.error('Error deleting team member status:', error);
+      throw error;
+    }
+  }
+
+  // Settings endpoints
+  @Get('settings/notification-message')
+  async getNotificationMessage() {
+    try {
+      const setting = await this.settingsService.getSetting('incident_notification_message');
+      return { value: setting?.value || '' };
+    } catch (error) {
+      console.error('Error fetching notification message:', error);
+      throw error;
+    }
+  }
+
+  @Put('settings/notification-message')
+  async updateNotificationMessage(@Body() data: { value: string }) {
+    try {
+      if (typeof data.value !== 'string') {
+        return { message: 'Invalid message value' };
+      }
+      const setting = await this.settingsService.upsertSetting('incident_notification_message', data.value);
+      return { value: setting.value };
+    } catch (error) {
+      console.error('Error updating notification message:', error);
       throw error;
     }
   }
