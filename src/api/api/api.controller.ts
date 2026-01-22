@@ -1095,6 +1095,10 @@ export class ApiController {
       const type = await this.teamMemberTypesService.update(id, updateData);
       return type;
     } catch (error) {
+      // Re-throw BadRequestException to let NestJS handle the status code
+      if (error.status === 400 || error instanceof Error && error.message.includes('Cannot')) {
+        throw error;
+      }
       console.error('Error updating team member type:', error);
       throw error;
     }
@@ -1111,6 +1115,10 @@ export class ApiController {
       await this.teamMemberTypesService.delete(id);
       return { success: true };
     } catch (error) {
+      // Re-throw BadRequestException to let NestJS handle the status code
+      if (error.status === 400 || error instanceof Error && error.message.includes('Cannot')) {
+        throw error;
+      }
       console.error('Error deleting team member type:', error);
       throw error;
     }
@@ -1169,6 +1177,10 @@ export class ApiController {
       const status = await this.teamMemberStatusesService.update(id, updateData);
       return status;
     } catch (error) {
+      // Re-throw BadRequestException to let NestJS handle the status code
+      if (error.status === 400 || error instanceof Error && error.message.includes('Cannot')) {
+        throw error;
+      }
       console.error('Error updating team member status:', error);
       throw error;
     }
@@ -1185,6 +1197,10 @@ export class ApiController {
       await this.teamMemberStatusesService.delete(id);
       return { success: true };
     } catch (error) {
+      // Re-throw BadRequestException to let NestJS handle the status code
+      if (error.status === 400 || error instanceof Error && error.message.includes('Cannot')) {
+        throw error;
+      }
       console.error('Error deleting team member status:', error);
       throw error;
     }

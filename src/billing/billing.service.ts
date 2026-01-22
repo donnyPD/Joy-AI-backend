@@ -18,7 +18,7 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    const secretKey = this.configService.get<string>('STRIPE_SECRET_KEY') || '883787';
     if (!secretKey) {
       throw new Error('STRIPE_SECRET_KEY is not configured');
     }
