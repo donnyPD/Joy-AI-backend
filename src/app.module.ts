@@ -12,6 +12,7 @@ import { QuotesModule } from './quotes/quotes.module';
 import { TagsModule } from './tags/tags.module';
 import { JobsModule } from './jobs/jobs.module';
 import { TeamMembersModule } from './team-members/team-members.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { TeamMembersModule } from './team-members/team-members.module';
     TagsModule,
     JobsModule,
     TeamMembersModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
