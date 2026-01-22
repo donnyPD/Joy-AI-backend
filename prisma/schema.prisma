@@ -562,3 +562,14 @@ model TeamMemberStatus {
 
   @@map("team_member_statuses")
 }
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([key])
+  @@map("settings")
+}
