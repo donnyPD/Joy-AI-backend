@@ -12,6 +12,23 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  private async getSubscriptionSummary(userId: string) {
+    const subscription = await this.prisma.stripeSubscription.findFirst({
+      where: {
+        userId,
+        status: { in: ['active', 'trialing', 'past_due'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      isSubscribed: !!subscription,
+      subscription: subscription
+        ? { planKey: subscription.planKey, status: subscription.status }
+        : null,
+    };
+  }
+
   async signUp(signUpDto: SignUpDto) {
     const { email, password, name } = signUpDto;
 
@@ -79,12 +96,15 @@ export class AuthService {
       email: user.email,
     });
 
+    const subscriptionSummary = await this.getSubscriptionSummary(user.id);
+
     return {
       accessToken,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        ...subscriptionSummary,
       },
     };
   }
@@ -108,7 +128,7 @@ export class AuthService {
   }
 
   async getUserById(userId: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -121,6 +141,16 @@ export class AuthService {
         createdAt: true,
       },
     });
+    if (!user) {
+      return null;
+    }
+
+    const subscriptionSummary = await this.getSubscriptionSummary(userId);
+
+    return {
+      ...user,
+      ...subscriptionSummary,
+    };
   }
 
   async getUserByAccountId(accountId: string) {
