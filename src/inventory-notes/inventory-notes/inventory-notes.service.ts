@@ -8,9 +8,10 @@ export class InventoryNotesService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<InventoryNote[]> {
+  async findAll(userId: string): Promise<InventoryNote[]> {
     try {
       return this.prisma.inventoryNote.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
@@ -19,10 +20,10 @@ export class InventoryNotesService {
     }
   }
 
-  async findAllByTeamMember(teamMemberId: string): Promise<InventoryNote[]> {
+  async findAllByTeamMember(teamMemberId: string, userId: string): Promise<InventoryNote[]> {
     try {
       return this.prisma.inventoryNote.findMany({
-        where: { teamMemberId },
+        where: { teamMemberId, userId },
         orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
@@ -31,10 +32,29 @@ export class InventoryNotesService {
     }
   }
 
-  async create(data: Prisma.InventoryNoteCreateInput): Promise<InventoryNote> {
+  async create(data: Prisma.InventoryNoteCreateInput, userId: string): Promise<InventoryNote> {
     try {
+      // Ensure nyTimestamp is always present - generate if missing
+      if (!data.nyTimestamp) {
+        const now = new Date();
+        const nyFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          year: 'numeric',
+          month: 'short',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+        data.nyTimestamp = nyFormatter.format(now);
+      }
+
+      const { user, ...dataWithoutUser } = data as any;
       const note = await this.prisma.inventoryNote.create({
-        data,
+        data: {
+          ...dataWithoutUser,
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+        },
       });
       this.logger.log(`Created inventory note: ${note.id}`);
       return note;
@@ -44,8 +64,16 @@ export class InventoryNotesService {
     }
   }
 
-  async update(id: string, data: Prisma.InventoryNoteUpdateInput): Promise<InventoryNote> {
+  async update(id: string, data: Prisma.InventoryNoteUpdateInput, userId: string): Promise<InventoryNote> {
     try {
+      // First verify the note belongs to the user
+      const existing = await this.prisma.inventoryNote.findFirst({
+        where: { id, userId },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory note with ID ${id} not found`);
+      }
+
       const note = await this.prisma.inventoryNote.update({
         where: { id },
         data,
@@ -53,6 +81,9 @@ export class InventoryNotesService {
       this.logger.log(`Updated inventory note: ${id}`);
       return note;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory note with ID ${id} not found`);
       }
@@ -61,13 +92,24 @@ export class InventoryNotesService {
     }
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId: string): Promise<void> {
     try {
+      // First verify the note belongs to the user
+      const existing = await this.prisma.inventoryNote.findFirst({
+        where: { id, userId },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory note with ID ${id} not found`);
+      }
+
       await this.prisma.inventoryNote.delete({
         where: { id },
       });
       this.logger.log(`Deleted inventory note: ${id}`);
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory note with ID ${id} not found`);
       }

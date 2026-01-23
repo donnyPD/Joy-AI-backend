@@ -19,12 +19,14 @@ export class InventorySnapshotsService {
   constructor(private prisma: PrismaService) {}
 
   // Ported from storage.ts: getInventorySnapshot
-  async findByMonthYear(month: number, year: number): Promise<InventorySnapshot | null> {
+  async findByMonthYear(month: number, year: number, userId: string): Promise<InventorySnapshot | null> {
     try {
+      // Use findFirst since userId is nullable and unique constraint might not work as expected
       return this.prisma.inventorySnapshot.findFirst({
         where: {
-          month,
-          year,
+          userId: userId,
+          month: month,
+          year: year,
         },
       });
     } catch (error) {
@@ -38,10 +40,11 @@ export class InventorySnapshotsService {
     month: number,
     year: number,
     snapshotData: InventorySnapshotItem[],
+    userId: string,
   ): Promise<InventorySnapshot> {
     try {
       // Check if snapshot already exists
-      const existing = await this.findByMonthYear(month, year);
+      const existing = await this.findByMonthYear(month, year, userId);
       if (existing) {
         return existing;
       }
@@ -51,6 +54,7 @@ export class InventorySnapshotsService {
           month,
           year,
           snapshotData: snapshotData as any, // Prisma Json type
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
         },
       });
       this.logger.log(`Created inventory snapshot for ${month}/${year}`);
@@ -62,9 +66,10 @@ export class InventorySnapshotsService {
   }
 
   // Ported from storage.ts: getAvailableSnapshotMonths
-  async getAvailableMonths(): Promise<Array<{ month: number; year: number }>> {
+  async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
     try {
       const snapshots = await this.prisma.inventorySnapshot.findMany({
+        where: { userId },
         select: {
           month: true,
           year: true,

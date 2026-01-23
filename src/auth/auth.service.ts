@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/co
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { SignUpDto } from './dto/signup.dto';
 import { SignInDto } from './dto/signin.dto';
 
@@ -44,12 +45,38 @@ export class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate unique publicFormKey
+    let publicFormKey: string;
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (!isUnique && attempts < maxAttempts) {
+      publicFormKey = crypto.randomBytes(16).toString('hex');
+      
+      // Check if key already exists
+      const existing = await this.prisma.user.findUnique({
+        where: { publicFormKey },
+      });
+
+      if (!existing) {
+        isUnique = true;
+      } else {
+        attempts++;
+      }
+    }
+
+    if (!isUnique) {
+      throw new Error('Failed to generate unique publicFormKey after multiple attempts');
+    }
+
     // Create user
     const user = await this.prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         name,
+        publicFormKey: publicFormKey!,
       },
       select: {
         id: true,

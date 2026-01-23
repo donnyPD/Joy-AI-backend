@@ -9,9 +9,10 @@ export class InventoryCategoriesService {
   constructor(private prisma: PrismaService) {}
 
   // Ported from storage.ts: getAllInventoryCategories
-  async findAll(): Promise<InventoryCategory[]> {
+  async findAll(userId: string): Promise<InventoryCategory[]> {
     try {
       return this.prisma.inventoryCategory.findMany({
+        where: { userId },
         orderBy: { createdAt: 'asc' },
       });
     } catch (error) {
@@ -21,10 +22,10 @@ export class InventoryCategoriesService {
   }
 
   // Ported from storage.ts: getInventoryCategory
-  async findOne(id: string): Promise<InventoryCategory | null> {
+  async findOne(id: string, userId: string): Promise<InventoryCategory | null> {
     try {
-      return this.prisma.inventoryCategory.findUnique({
-        where: { id },
+      return this.prisma.inventoryCategory.findFirst({
+        where: { id, userId },
       });
     } catch (error) {
       this.logger.error(`Error fetching inventory category: ${error.message}`, error.stack);
@@ -33,10 +34,10 @@ export class InventoryCategoriesService {
   }
 
   // Ported from storage.ts: getInventoryCategoryByName
-  async findByName(name: string): Promise<InventoryCategory | null> {
+  async findByName(name: string, userId: string): Promise<InventoryCategory | null> {
     try {
       return this.prisma.inventoryCategory.findUnique({
-        where: { name },
+        where: { userId_name: { userId, name } },
       });
     } catch (error) {
       this.logger.error(`Error fetching inventory category by name: ${error.message}`, error.stack);
@@ -45,10 +46,14 @@ export class InventoryCategoriesService {
   }
 
   // Ported from storage.ts: createInventoryCategory
-  async create(data: Prisma.InventoryCategoryCreateInput): Promise<InventoryCategory> {
+  async create(data: Prisma.InventoryCategoryCreateInput, userId: string): Promise<InventoryCategory> {
     try {
+      const { user, ...dataWithoutUser } = data as any;
       const category = await this.prisma.inventoryCategory.create({
-        data,
+        data: {
+          ...dataWithoutUser,
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+        },
       });
       this.logger.log(`Created inventory category: ${category.id}`);
       return category;
@@ -59,8 +64,14 @@ export class InventoryCategoriesService {
   }
 
   // Ported from storage.ts: updateInventoryCategory
-  async update(id: string, data: Prisma.InventoryCategoryUpdateInput): Promise<InventoryCategory> {
+  async update(id: string, data: Prisma.InventoryCategoryUpdateInput, userId: string): Promise<InventoryCategory> {
     try {
+      // First verify the category belongs to the user
+      const existing = await this.findOne(id, userId);
+      if (!existing) {
+        throw new NotFoundException(`Inventory category with ID ${id} not found`);
+      }
+
       const category = await this.prisma.inventoryCategory.update({
         where: { id },
         data,
@@ -68,6 +79,9 @@ export class InventoryCategoriesService {
       this.logger.log(`Updated inventory category: ${id}`);
       return category;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory category with ID ${id} not found`);
       }
@@ -77,13 +91,22 @@ export class InventoryCategoriesService {
   }
 
   // Ported from storage.ts: deleteInventoryCategory
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId: string): Promise<void> {
     try {
+      // First verify the category belongs to the user
+      const existing = await this.findOne(id, userId);
+      if (!existing) {
+        throw new NotFoundException(`Inventory category with ID ${id} not found`);
+      }
+
       await this.prisma.inventoryCategory.delete({
         where: { id },
       });
       this.logger.log(`Deleted inventory category: ${id}`);
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory category with ID ${id} not found`);
       }
