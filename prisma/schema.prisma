@@ -19,6 +19,7 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
+  notificationTemplates NotificationTemplate[]
   stripeCustomerId           String?                     @unique
   stripeSubscriptions        StripeSubscription[]
   teamMembers                TeamMember[]
@@ -658,13 +659,16 @@ model TeamMemberStatus {
   @@map("team_member_statuses")
 }
 
-model Setting {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  value     String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model NotificationTemplate {
+  id          String   @id @default(uuid())
+  createdById String   @map("created_by_id")
+  template    String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([key])
-  @@map("settings")
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([createdById])
+  @@index([createdById])
+  @@map("notification_templates")
 }
