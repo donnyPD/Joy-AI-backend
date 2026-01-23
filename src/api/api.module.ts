@@ -17,6 +17,11 @@ import { InventoryColumnDefinitionsModule } from '../inventory-column-definition
 import { CustomMetricDefinitionsModule } from '../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.module';
 import { TeamMemberTypesModule } from '../team-member-types/team-member-types/team-member-types.module';
 import { TeamMemberStatusesModule } from '../team-member-statuses/team-member-statuses/team-member-statuses.module';
+import { InvoicesModule } from '../invoices/invoices.module';
+import { QuotesModule } from '../quotes/quotes.module';
+import { JobsModule } from '../jobs/jobs.module';
+import { VisitsModule } from '../visits/visits.module';
+import { TimesheetsModule } from '../timesheets/timesheets.module';
 import { NotificationTemplateModule } from '../notification-templates/notification-templates/notification-template.module';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -40,6 +45,11 @@ import { PrismaModule } from '../prisma/prisma.module';
     CustomMetricDefinitionsModule,
     TeamMemberTypesModule,
     TeamMemberStatusesModule,
+    InvoicesModule,
+    QuotesModule,
+    JobsModule,
+    VisitsModule,
+    TimesheetsModule,
     NotificationTemplateModule,
     AuthModule,
     PrismaModule,

@@ -18,69 +18,125 @@ export class JobsService {
   ) {}
 
   private async getAccessTokenForWebhook(webhookPayload: any): Promise<string | undefined> {
-    // Try to get accountId from webhook payload
-    const accountId =
-      webhookPayload.data?.webHookEvent?.accountId ||
-      webhookPayload.accountId ||
-      webhookPayload.data?.accountId;
+    try {
+      // Try to get accountId from webhook payload
+      const accountId =
+        webhookPayload.data?.webHookEvent?.accountId ||
+        webhookPayload.accountId ||
+        webhookPayload.data?.accountId;
 
-    if (!accountId) {
-      this.logger.warn('Webhook payload missing accountId; cannot resolve user-specific token.');
-      return undefined; // Will use fallback token if configured
+      if (!accountId) {
+        this.logger.warn('Webhook payload missing accountId; cannot resolve user-specific token.');
+        return undefined; // Will use fallback token if configured
+      }
+
+      const user = await this.authService.getUserByAccountIdOrAttach(accountId);
+      if (!user?.id) {
+        this.logger.warn(
+          `No connected user found for Jobber accountId ${accountId}. Please disconnect/reconnect Jobber.`,
+        );
+        return undefined;
+      }
+
+      // Get valid access token (will auto-refresh if needed)
+      try {
+        return await this.jobberOAuthService.getValidAccessToken(user.id);
+      } catch (tokenError: any) {
+        this.logger.error(
+          `Failed to get/refresh access token for user ${user.id}: ${tokenError.message}`,
+        );
+        this.logger.error(
+          '⚠️ The refresh token may be invalid. Please disconnect and reconnect your Jobber account in Settings.',
+        );
+        return undefined;
+      }
+    } catch (error: any) {
+      this.logger.error(`Error in getAccessTokenForWebhook: ${error.message}`);
+      return undefined;
     }
-
-    const user = await this.authService.getUserByAccountIdOrAttach(accountId);
-    if (!user?.id) {
-      throw new Error(
-        `No connected user found for Jobber accountId ${accountId}. Please disconnect/reconnect Jobber.`,
-      );
-    }
-
-    // Get valid access token (will auto-refresh if needed)
-    return await this.jobberOAuthService.getValidAccessToken(user.id);
   }
 
   async handleJobCreate(webhookPayload: any) {
     try {
+      this.logger.log('📥 Starting JOB_CREATE processing...');
+      this.logger.log('Webhook payload structure:', JSON.stringify(webhookPayload, null, 2));
+      
       const jobId = webhookPayload.data?.webHookEvent?.itemId;
       if (!jobId) {
+        this.logger.error('❌ Job ID not found in webhook payload');
+        this.logger.error('Payload keys:', Object.keys(webhookPayload));
+        if (webhookPayload.data) {
+          this.logger.error('Payload.data keys:', Object.keys(webhookPayload.data));
+        }
         throw new Error('Job ID not found in webhook payload');
       }
 
-      this.logger.log(`Processing JOB_CREATE for: ${jobId}`);
+      this.logger.log(`✅ Job ID extracted: ${jobId}`);
 
       // Get user-specific access token if available
+      this.logger.log('🔑 Getting access token...');
       const accessToken = await this.getAccessTokenForWebhook(webhookPayload);
+      if (!accessToken) {
+        this.logger.error(
+          '❌ No valid access token available. Cannot fetch job details from Jobber.',
+        );
+        this.logger.error(
+          '⚠️ ACTION REQUIRED: Please disconnect and reconnect your Jobber account in Settings to refresh the access token.',
+        );
+        this.logger.error(
+          `📝 Job ID from webhook: ${jobId} - This job will be synced once you reconnect your Jobber account.`,
+        );
+        throw new Error(
+          'No valid access token. Please disconnect and reconnect your Jobber account in Settings.',
+        );
+      } else {
+        this.logger.log('✅ Access token obtained');
+      }
 
       // Fetch full job data from Jobber
+      this.logger.log('📡 Fetching job details from Jobber...');
       const jobberData = await this.jobberJobsService.getJobDetails(jobId, accessToken);
-      console.log('Jobber job full response:', JSON.stringify(jobberData, null, 2));
+      this.logger.log('Jobber API response received');
+      
       const jobberJob = jobberData.data?.job;
 
       if (!jobberJob) {
+        this.logger.error('❌ Job not found in Jobber API response');
+        this.logger.error('Response structure:', JSON.stringify(jobberData, null, 2));
         throw new Error('Job not found in Jobber');
       }
 
+      this.logger.log('✅ Job data fetched from Jobber');
+
       // Transform to database schema
+      this.logger.log('🔄 Transforming job data...');
       const jobData = this.transformJobberData(jobberJob);
+      this.logger.log('✅ Job data transformed');
 
       // Upsert to database
+      this.logger.log('💾 Saving job to database...');
       const job = await this.prisma.job.upsert({
         where: { jId: jobData.jId },
         update: jobData,
         create: jobData,
       });
 
+      this.logger.log(`✅ Job saved to database: ${job.jId} (DB ID: ${job.id})`);
+
       // Generate and sync tags from job title
       const client = jobberJob.client;
       if (client?.id && jobberJob.title) {
+        this.logger.log('🏷️ Generating tags from job title...');
         await this.generateAndSyncTagsFromJob(jobberJob, client.id, client.emails?.[0]?.address || '');
+        this.logger.log('✅ Tags generated');
       }
 
-      this.logger.log(`✅ Job saved: ${job.jId}`);
+      this.logger.log(`✅ JOB_CREATE processing completed successfully for: ${job.jId}`);
       return job;
     } catch (error) {
-      this.logger.error('Error handling job create:', error);
+      this.logger.error('❌ Error handling job create:', error);
+      this.logger.error('Error message:', error.message);
+      this.logger.error('Error stack:', error.stack);
       throw error;
     }
   }
@@ -215,6 +271,7 @@ export class JobsService {
     const clientName = [client.firstName, client.lastName].filter(Boolean).join(' ') || '';
     const clientEmail = client.emails?.[0]?.address || '';
     const clientPhone = client.phones?.find((p: any) => p.primary)?.number || client.phones?.[0]?.number || '';
+    const clientBilling = client.billingAddress || {};
 
     // Salesperson info
     const salesperson = jobberJob.salesperson || {};
@@ -277,6 +334,7 @@ export class JobsService {
 
     // Custom fields
     const customFields = jobberJob.customFields || [];
+    const clientCustomFields = client.customFields || [];
 
     // Job type mapping (ONE_OFF -> ONE_TIME)
     const jobType = jobberJob.jobType === 'ONE_OFF' ? 'ONE_TIME' : jobberJob.jobType || '';
@@ -297,7 +355,7 @@ export class JobsService {
       clientEmail: clientEmail,
       clientPhone: clientPhone,
 
-      servicePropertyName: lineItemsNodes[0]?.name || '', // From first line item name
+      servicePropertyName: property.name || lineItemsNodes[0]?.name || '',
       serviceStreet: propertyAddress.street || '',
       serviceCity: propertyAddress.city || '',
       serviceProvince: propertyAddress.province || '',
@@ -305,10 +363,15 @@ export class JobsService {
       serviceCountry: propertyAddress.country || '',
 
       billingType: jobberJob.billingType || '',
-      billingStreet: propertyAddress.street || '', // Same as service for now
-      billingCity: propertyAddress.city || '',
-      billingProvince: propertyAddress.province || '',
-      billingZip: propertyAddress.postalCode || '',
+      billingStreet: clientBilling.street || propertyAddress.street || '',
+      billingCity: clientBilling.city || propertyAddress.city || '',
+      billingProvince: clientBilling.province || propertyAddress.province || '',
+      billingZip: clientBilling.postalCode || propertyAddress.postalCode || '',
+      leadSource:
+        getCustomFieldByLabel(customFields, 'Lead Source') ||
+        getCustomFieldByLabel(clientCustomFields, 'Lead Source') ||
+        '',
+      onlineBooking: getCustomFieldByLabel(customFields, 'Online Booking') || '',
 
       createdAt: jobberJob.createdAt ? new Date(jobberJob.createdAt) : null,
       startAt: jobberJob.startAt ? new Date(jobberJob.startAt) : null,
@@ -332,6 +395,15 @@ export class JobsService {
 
       numberOfInvoices: invoiceNumbers,
       invoicesJson: JSON.stringify(jobberJob.invoices?.nodes || []),
+      expensesTotal: '',
+      timeTracked: '',
+      labourCostTotal: '',
+      lineItemCostTotal: '',
+      totalCosts: '',
+      quoteDiscount: '',
+      totalRevenue: '',
+      profit: '',
+      profitPercent: '',
 
       quoteNumber: jobberJob.quote?.quoteNumber || '',
 
@@ -366,6 +438,7 @@ export class JobsService {
       trashCanInventory: getCustomFieldByLabel(customFields, 'Trash can Inventory') || getCustomFieldByLabel(customFields, 'trash can inventory'),
       changeSheets: getCustomFieldByLabel(customFields, 'Change Sheets') || getCustomFieldByLabel(customFields, 'change sheets') || getCustomFieldByLabel(customFields, 'chnage sheets'),
       cleaningTech: getCustomFieldByLabel(customFields, 'Cleaning Tech') || getCustomFieldByLabel(customFields, 'cleaning tech'),
+      replied: '',
 
       // JSON Backups
       customFieldsJson: JSON.stringify(customFields),
@@ -486,5 +559,40 @@ export class JobsService {
     }
 
     return newTags;
+  }
+
+  async findAll(limit: number = 100, skip: number = 0) {
+    try {
+      const jobs = await this.prisma.job.findMany({
+        take: limit,
+        skip: skip,
+        orderBy: { createdAt: 'desc' },
+      });
+      return jobs;
+    } catch (error) {
+      this.logger.error('Error fetching jobs:', error);
+      throw error;
+    }
+  }
+
+  async findOne(jId: string) {
+    try {
+      const job = await this.prisma.job.findUnique({
+        where: { jId },
+      });
+      return job;
+    } catch (error) {
+      this.logger.error('Error fetching job:', error);
+      throw error;
+    }
+  }
+
+  async count() {
+    try {
+      return await this.prisma.job.count();
+    } catch (error) {
+      this.logger.error('Error counting jobs:', error);
+      throw error;
+    }
   }
 }

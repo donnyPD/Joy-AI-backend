@@ -17,6 +17,11 @@ import { InventoryColumnDefinitionsService } from '../../inventory-column-defini
 import { CustomMetricDefinitionsService } from '../../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.service';
 import { TeamMemberTypesService } from '../../team-member-types/team-member-types/team-member-types.service';
 import { TeamMemberStatusesService } from '../../team-member-statuses/team-member-statuses/team-member-statuses.service';
+import { InvoicesService } from '../../invoices/invoices/invoices.service';
+import { QuotesService } from '../../quotes/quotes/quotes.service';
+import { JobsService } from '../../jobs/jobs/jobs.service';
+import { VisitsService } from '../../visits/visits/visits.service';
+import { TimesheetsService } from '../../timesheets/timesheets/timesheets.service';
 import { NotificationTemplateService } from '../../notification-templates/notification-templates/notification-template.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -40,6 +45,11 @@ export class ApiController {
     private customMetricDefinitionsService: CustomMetricDefinitionsService,
     private teamMemberTypesService: TeamMemberTypesService,
     private teamMemberStatusesService: TeamMemberStatusesService,
+    private invoicesService: InvoicesService,
+    private quotesService: QuotesService,
+    private jobsService: JobsService,
+    private visitsService: VisitsService,
+    private timesheetsService: TimesheetsService,
     private notificationTemplateService: NotificationTemplateService,
     private prisma: PrismaService,
   ) {}
@@ -2025,6 +2035,469 @@ export class ApiController {
       return submission;
     } catch (error) {
       console.error('Error submitting public form:', error);
+      throw error;
+    }
+  }
+
+  // Quotes endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('quotes')
+  async getQuotes(@Query('limit') limit?: string, @Query('skip') skip?: string) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+      const quotes = await this.quotesService.findAll(limitNum, skipNum);
+      
+      // Transform database structure to match frontend expectations
+      const transformedQuotes = quotes.map((quote) => ({
+        id: quote.jId,
+        quoteNumber: quote.quoteNumber || '',
+        clientName: quote.clientName || '',
+        clientEmail: quote.clientEmail || '',
+        clientPhone: quote.clientPhone || '',
+        sentTo: quote.sentTo || '',
+        servicePropertyName: quote.servicePropertyName || '',
+        serviceStreet: quote.serviceStreet || '',
+        serviceCity: quote.serviceCity || '',
+        serviceProvince: quote.serviceProvince || '',
+        serviceZip: quote.serviceZip || '',
+        salesperson: quote.salesperson || '',
+        title: quote.title || '',
+        status: quote.status || '',
+        leadSource: quote.leadSource || '',
+        lineItems: quote.lineItems || '',
+        subtotal: quote.subtotal || '',
+        total: quote.total || '',
+        discount: quote.discount || '',
+        requiredDeposit: quote.requiredDeposit || '',
+        collectedDeposit: quote.collectedDeposit || '',
+        jobNumbers: quote.jobNumbers || '',
+        sentByUser: quote.sentByUser || '',
+        clientHubViewedAt: quote.clientHubViewedAt || '',
+        draftedDate: quote.draftedDate || '',
+        sentDate: quote.sentDate || '',
+        changesRequestedDate: quote.changesRequestedDate || '',
+        approvedDate: quote.approvedDate || '',
+        convertedDate: quote.convertedDate || '',
+        archivedDate: quote.archivedDate || '',
+        timeEstimated: quote.timeEstimated || '',
+        birthdayMonth: quote.birthdayMonth || '',
+        referredBy: quote.referredBy || '',
+        typeOfProperty: quote.typeOfProperty || '',
+        desiredFrequency: quote.desiredFrequency || '',
+        exactSqFt: quote.exactSqFt || '',
+        typeOfCleaning: quote.typeOfCleaning || '',
+        additionalRequest: quote.additionalRequest || '',
+        parkingDetails: quote.parkingDetails || '',
+        squareFoot: quote.squareFoot || '',
+        frequency: quote.frequency || '',
+        preferredTimeOfContact: quote.preferredTimeOfContact || '',
+        zone: quote.zone || '',
+        dirtScale: quote.dirtScale || '',
+      }));
+
+      return {
+        success: true,
+        count: transformedQuotes.length,
+        quotes: transformedQuotes,
+      };
+    } catch (error) {
+      console.error('Error fetching quotes:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('quotes/:id')
+  async getQuote(@Param('id') id: string) {
+    try {
+      const quote = await this.quotesService.findOne(id);
+      if (!quote) {
+        return { error: 'Quote not found' };
+      }
+      return quote;
+    } catch (error) {
+      console.error('Error fetching quote:', error);
+      throw error;
+    }
+  }
+
+  // Jobs endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('jobs')
+  async getJobs(@Query('limit') limit?: string, @Query('skip') skip?: string) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+      const jobs = await this.jobsService.findAll(limitNum, skipNum);
+      
+      // Transform database structure to match frontend expectations
+      const transformedJobs = jobs.map((job) => ({
+        id: job.jId,
+        jobNumber: job.jobNumber || '',
+        title: job.title || '',
+        jobStatus: job.jobStatus || '',
+        jobType: job.jobType || '',
+        createdDate: job.createdDate || '',
+        scheduleStartDate: job.scheduleStartDate || '',
+        scheduleEndDate: job.scheduleEndDate || '',
+        closedDate: job.closedDate || '',
+        startTime: job.startTime || '',
+        endTime: job.endTime || '',
+        clientName: job.clientName || '',
+        clientEmail: job.clientEmail || '',
+        clientPhone: job.clientPhone || '',
+        leadSource: job.leadSource || '',
+        billingStreet: job.billingStreet || '',
+        billingCity: job.billingCity || '',
+        billingProvince: job.billingProvince || '',
+        billingZip: job.billingZip || '',
+        servicePropertyName: job.servicePropertyName || '',
+        serviceStreet: job.serviceStreet || '',
+        serviceCity: job.serviceCity || '',
+        serviceProvince: job.serviceProvince || '',
+        serviceZip: job.serviceZip || '',
+        billingType: job.billingType || '',
+        visitFrequency: job.visitFrequency || '',
+        billingFrequency: job.billingFrequency || '',
+        automaticInvoicing: job.automaticInvoicing || '',
+        visitsAssignedTo: job.visitsAssignedTo || '',
+        lineItems: job.lineItems || '',
+        total: job.total || '',
+        completedVisits: job.completedVisits || '',
+        numberOfInvoices: job.numberOfInvoices || '',
+        salesperson: job.salesperson || '',
+        invoiceNumbers: job.numberOfInvoices || '',
+        quoteNumber: job.quoteNumber || '',
+        onlineBooking: job.onlineBooking || '',
+        expensesTotal: job.expensesTotal || '',
+        timeTracked: job.timeTracked || '',
+        labourCostTotal: job.labourCostTotal || '',
+        lineItemCostTotal: job.lineItemCostTotal || '',
+        totalCosts: job.totalCosts || '',
+        quoteDiscount: job.quoteDiscount || '',
+        totalRevenue: job.totalRevenue || '',
+        profit: job.profit || '',
+        profitPercent: job.profitPercent || '',
+        typeOfProperty: job.typeOfProperty || '',
+        frequency: job.frequency || '',
+        referredBy: job.referredBy || '',
+        birthdayMonth: job.birthdayMonth || '',
+        typeOfCleaning: job.typeOfCleaning || '',
+        hours: job.hours || '',
+        cleaningInstructions: job.cleaningInstructions || '',
+        howToGetInTheHouse: job.howToGetInTheHouse || '',
+        detailToGetInTheHouse: job.detailToGetInTheHouse || '',
+        cleanInsideOfTheStove: job.cleanInsideOfTheStove || '',
+        cleanInsideOfTheFridge: job.cleanInsideOfTheFridge || '',
+        windowsToBeCleaned: job.windowsToBeCleaned || '',
+        glassDoorsToBeCleaned: job.glassDoorsToBeCleaned || '',
+        typerOfProductsToUse: job.typerOfProductsToUse || '',
+        squareFoot: job.squareFoot || '',
+        exactSqFt: job.exactSqFt || '',
+        zone: job.zone || '',
+        parkingDetails: job.parkingDetails || '',
+        responsibidProfile: job.responsibidProfile || '',
+        preferredTimeOfContact: job.preferredTimeOfContact || '',
+        additionalInstructions: job.additionalInstructions || '',
+        pets: job.pets || '',
+        clientsProductsNotes: job.clientsProductsNotes || '',
+        trashCanInventory: job.trashCanInventory || '',
+        changeSheets: job.changeSheets || '',
+        cleaningTech: job.cleaningTech || '',
+        replied: job.replied || '',
+      }));
+
+      return {
+        success: true,
+        count: transformedJobs.length,
+        jobs: transformedJobs,
+      };
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('jobs/:id')
+  async getJob(@Param('id') id: string) {
+    try {
+      const job = await this.jobsService.findOne(id);
+      if (!job) {
+        return { error: 'Job not found' };
+      }
+      return job;
+    } catch (error) {
+      console.error('Error fetching job:', error);
+      throw error;
+    }
+  }
+
+  // Invoices endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('invoices')
+  async getInvoices(@Query('limit') limit?: string, @Query('skip') skip?: string) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+      const invoices = await this.invoicesService.findAll(limitNum, skipNum);
+
+      const transformedInvoices = invoices.map((invoice) => ({
+        id: invoice.jId,
+        invoiceNumber: invoice.invoiceNumber || '',
+        clientName: invoice.clientName || '',
+        leadSource: invoice.leadSource || '',
+        clientEmail: invoice.clientEmail || '',
+        clientPhone: invoice.clientPhone || '',
+        sentTo: invoice.sentTo || '',
+        billingStreet: invoice.billingStreet || '',
+        billingCity: invoice.billingCity || '',
+        billingProvince: invoice.billingProvince || '',
+        billingZip: invoice.billingZip || '',
+        servicePropertyName: invoice.servicePropertyName || '',
+        serviceStreet: invoice.serviceStreet || '',
+        serviceCity: invoice.serviceCity || '',
+        serviceProvince: invoice.serviceProvince || '',
+        serviceZip: invoice.serviceZip || '',
+        subject: invoice.subject || '',
+        createdDate: invoice.createdDate || '',
+        issuedDate: invoice.issuedDate || '',
+        dueDate: invoice.dueDate || '',
+        lateBy: invoice.lateBy || '',
+        salesperson: invoice.salesperson || '',
+        markedPaidDate: invoice.markedPaidDate || '',
+        daysToPaid: invoice.daysToPaid || '',
+        lastContacted: invoice.lastContacted || '',
+        visitsAssignedTo: invoice.visitsAssignedTo || '',
+        jobNumbers: invoice.jobNumbers || '',
+        status: invoice.status || '',
+        lineItems: invoice.lineItems || '',
+        preTaxTotal: invoice.preTaxTotal || '',
+        total: invoice.total || '',
+        tip: invoice.tip || '',
+        balance: invoice.balance || '',
+        taxPercent: invoice.taxPercent || '',
+        deposit: invoice.deposit || '',
+        discount: invoice.discount || '',
+        taxAmount: invoice.taxAmount || '',
+        viewedInClientHub: invoice.viewedInClientHub || '',
+        referredBy: invoice.referredBy || '',
+        cleaningTechAssigned: invoice.cleaningTechAssigned || '',
+        birthdayMonth: invoice.birthdayMonth || '',
+        frequency: invoice.frequency || '',
+        typeOfProperty: invoice.typeOfProperty || '',
+        parkingDetails: invoice.parkingDetails || '',
+        squareFoot: invoice.squareFoot || '',
+        exactSqFt: invoice.exactSqFt || '',
+        preferredTimeOfContact: invoice.preferredTimeOfContact || '',
+        zone: invoice.zone || '',
+        cleaningTech: invoice.cleaningTech || '',
+      }));
+
+      return {
+        success: true,
+        count: transformedInvoices.length,
+        invoices: transformedInvoices,
+      };
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('invoices/:id')
+  async getInvoice(@Param('id') id: string) {
+    try {
+      const invoice = await this.invoicesService.findOne(id);
+      if (!invoice) {
+        return { error: 'Invoice not found' };
+      }
+      return {
+        id: invoice.jId,
+        invoiceNumber: invoice.invoiceNumber || '',
+        clientName: invoice.clientName || '',
+        leadSource: invoice.leadSource || '',
+        clientEmail: invoice.clientEmail || '',
+        clientPhone: invoice.clientPhone || '',
+        sentTo: invoice.sentTo || '',
+        billingStreet: invoice.billingStreet || '',
+        billingCity: invoice.billingCity || '',
+        billingProvince: invoice.billingProvince || '',
+        billingZip: invoice.billingZip || '',
+        servicePropertyName: invoice.servicePropertyName || '',
+        serviceStreet: invoice.serviceStreet || '',
+        serviceCity: invoice.serviceCity || '',
+        serviceProvince: invoice.serviceProvince || '',
+        serviceZip: invoice.serviceZip || '',
+        subject: invoice.subject || '',
+        createdDate: invoice.createdDate || '',
+        issuedDate: invoice.issuedDate || '',
+        dueDate: invoice.dueDate || '',
+        lateBy: invoice.lateBy || '',
+        salesperson: invoice.salesperson || '',
+        markedPaidDate: invoice.markedPaidDate || '',
+        daysToPaid: invoice.daysToPaid || '',
+        lastContacted: invoice.lastContacted || '',
+        visitsAssignedTo: invoice.visitsAssignedTo || '',
+        jobNumbers: invoice.jobNumbers || '',
+        status: invoice.status || '',
+        lineItems: invoice.lineItems || '',
+        preTaxTotal: invoice.preTaxTotal || '',
+        total: invoice.total || '',
+        tip: invoice.tip || '',
+        balance: invoice.balance || '',
+        taxPercent: invoice.taxPercent || '',
+        deposit: invoice.deposit || '',
+        discount: invoice.discount || '',
+        taxAmount: invoice.taxAmount || '',
+        viewedInClientHub: invoice.viewedInClientHub || '',
+        referredBy: invoice.referredBy || '',
+        cleaningTechAssigned: invoice.cleaningTechAssigned || '',
+        birthdayMonth: invoice.birthdayMonth || '',
+        frequency: invoice.frequency || '',
+        typeOfProperty: invoice.typeOfProperty || '',
+        parkingDetails: invoice.parkingDetails || '',
+        squareFoot: invoice.squareFoot || '',
+        exactSqFt: invoice.exactSqFt || '',
+        preferredTimeOfContact: invoice.preferredTimeOfContact || '',
+        zone: invoice.zone || '',
+        cleaningTech: invoice.cleaningTech || '',
+      };
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+      throw error;
+    }
+  }
+
+  // Visits endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('visits')
+  async getVisits(@Query('limit') limit?: string, @Query('skip') skip?: string) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+      const visits = await this.visitsService.findAll(limitNum, skipNum);
+
+      const transformedVisits = visits.map((visit) => ({
+        id: visit.jId,
+        jobNumber: visit.jobNumber || '',
+        date: visit.date || '',
+        times: visit.times || '',
+        visitTitle: visit.visitTitle || '',
+        clientName: visit.clientName || '',
+        clientEmail: visit.clientEmail || '',
+        clientPhone: visit.clientPhone || '',
+        servicePropertyName: visit.servicePropertyName || '',
+        serviceStreet: visit.serviceStreet || '',
+        serviceCity: visit.serviceCity || '',
+        serviceProvince: visit.serviceProvince || '',
+        serviceZip: visit.serviceZip || '',
+        visitCompletedDate: visit.visitCompletedDate || '',
+        assignedTo: visit.assignedTo || '',
+        lineItems: visit.lineItems || '',
+        oneOffJob: visit.oneOffJob || '',
+        visitBased: visit.visitBased || '',
+        scheduleDuration: visit.scheduleDuration || '',
+        timeTracked: visit.timeTracked || '',
+        jobType: visit.jobType || '',
+        typeOfProperty: visit.typeOfProperty || '',
+        frequency: visit.frequency || '',
+        referredBy: visit.referredBy || '',
+        birthdayMonth: visit.birthdayMonth || '',
+        typeOfCleaning: visit.typeOfCleaning || '',
+        hours: visit.hours || '',
+        cleaningInstructions: visit.cleaningInstructions || '',
+        howToGetInTheHouse: visit.howToGetInTheHouse || '',
+        detailToGetInTheHouse: visit.detailToGetInTheHouse || '',
+        cleanInsideOfTheStove: visit.cleanInsideOfTheStove || '',
+        cleanInsideOfTheFridge: visit.cleanInsideOfTheFridge || '',
+        windowsToBeCleaned: visit.windowsToBeCleaned || '',
+        glassDoorsToBeCleaned: visit.glassDoorsToBeCleaned || '',
+        typerOfProductsToUse: visit.typerOfProductsToUse || '',
+        squareFoot: visit.squareFoot || '',
+        exactSqFt: visit.exactSqFt || '',
+        zone: visit.zone || '',
+        parkingDetails: visit.parkingDetails || '',
+        responsibidProfile: visit.responsibidProfile || '',
+        preferredTimeOfContact: visit.preferredTimeOfContact || '',
+        additionalInstructions: visit.additionalInstructions || '',
+        pets: visit.pets || '',
+        clientsProductsNotes: visit.clientsProductsNotes || '',
+        trashCanInventory: visit.trashCanInventory || '',
+        changeSheets: visit.changeSheets || '',
+        cleaningTech: visit.cleaningTech || '',
+      }));
+
+      return {
+        success: true,
+        count: transformedVisits.length,
+        visits: transformedVisits,
+      };
+    } catch (error) {
+      console.error('Error fetching visits:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('visits/:id')
+  async getVisit(@Param('id') id: string) {
+    try {
+      const visit = await this.visitsService.findOne(id);
+      if (!visit) {
+        return { error: 'Visit not found' };
+      }
+      return visit;
+    } catch (error) {
+      console.error('Error fetching visit:', error);
+      throw error;
+    }
+  }
+
+  // Timesheets endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('timesheets')
+  async getTimesheets(@Query('limit') limit?: string, @Query('skip') skip?: string) {
+    try {
+      const limitNum = limit ? parseInt(limit, 10) : 100;
+      const skipNum = skip ? parseInt(skip, 10) : 0;
+      const timesheets = await this.timesheetsService.findAll(limitNum, skipNum);
+      const transformedTimesheets = timesheets.map((timesheet) => ({
+        id: timesheet.jId,
+        userName: timesheet.userName || '',
+        date: timesheet.date || '',
+        startTime: timesheet.startTime || '',
+        endTime: timesheet.endTime || '',
+        hours: timesheet.hours || '',
+        workingOn: timesheet.workingOn || '',
+        note: timesheet.note || '',
+        clientName: timesheet.clientName || '',
+      }));
+
+      return {
+        success: true,
+        count: transformedTimesheets.length,
+        timesheets: transformedTimesheets,
+      };
+    } catch (error) {
+      console.error('Error fetching timesheets:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('timesheets/:id')
+  async getTimesheet(@Param('id') id: string) {
+    try {
+      const timesheet = await this.timesheetsService.findOne(id);
+      if (!timesheet) {
+        return { error: 'Timesheet not found' };
+      }
+      return timesheet;
+    } catch (error) {
+      console.error('Error fetching timesheet:', error);
       throw error;
     }
   }
