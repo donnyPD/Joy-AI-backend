@@ -1,0 +1,96 @@
+-- Step 1: Add nullable columns first (if they don't exist)
+ALTER TABLE "team_members" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
+ALTER TABLE "kpi_entries" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
+ALTER TABLE "team_member_types" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
+ALTER TABLE "team_member_statuses" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
+
+-- Step 2: For existing records, assign them to the first user (if any exists)
+-- This ensures data integrity. If no users exist, you must create a user first
+UPDATE "team_members" 
+SET "created_by_id" = (SELECT id FROM users ORDER BY "created_at" ASC LIMIT 1)
+WHERE "created_by_id" IS NULL;
+
+UPDATE "kpi_entries" 
+SET "created_by_id" = (SELECT id FROM users ORDER BY "created_at" ASC LIMIT 1)
+WHERE "created_by_id" IS NULL;
+
+UPDATE "team_member_types" 
+SET "created_by_id" = (SELECT id FROM users ORDER BY "created_at" ASC LIMIT 1)
+WHERE "created_by_id" IS NULL;
+
+UPDATE "team_member_statuses" 
+SET "created_by_id" = (SELECT id FROM users ORDER BY "created_at" ASC LIMIT 1)
+WHERE "created_by_id" IS NULL;
+
+-- Step 3: Drop old unique constraints and add new composite unique constraints
+-- For team_member_types: change from unique(name) to unique(name, created_by_id)
+DO $$
+BEGIN
+    -- Drop old unique constraint on team_member_types.name if it exists
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'team_member_types_name_key'
+    ) THEN
+        ALTER TABLE "team_member_types" DROP CONSTRAINT "team_member_types_name_key";
+    END IF;
+    
+    -- Drop old unique constraint on team_member_statuses.name if it exists
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'team_member_statuses_name_key'
+    ) THEN
+        ALTER TABLE "team_member_statuses" DROP CONSTRAINT "team_member_statuses_name_key";
+    END IF;
+END $$;
+
+-- Step 4: Make columns NOT NULL (only if we have users, otherwise this will fail)
+-- If you have existing data without users, you must create a user first
+ALTER TABLE "team_members" ALTER COLUMN "created_by_id" SET NOT NULL;
+ALTER TABLE "kpi_entries" ALTER COLUMN "created_by_id" SET NOT NULL;
+ALTER TABLE "team_member_types" ALTER COLUMN "created_by_id" SET NOT NULL;
+ALTER TABLE "team_member_statuses" ALTER COLUMN "created_by_id" SET NOT NULL;
+
+-- Step 5: Create indexes (if they don't exist)
+CREATE INDEX IF NOT EXISTS "team_members_created_by_id_idx" ON "team_members"("created_by_id");
+CREATE INDEX IF NOT EXISTS "kpi_entries_created_by_id_idx" ON "kpi_entries"("created_by_id");
+CREATE INDEX IF NOT EXISTS "team_member_types_created_by_id_idx" ON "team_member_types"("created_by_id");
+CREATE INDEX IF NOT EXISTS "team_member_statuses_created_by_id_idx" ON "team_member_statuses"("created_by_id");
+
+-- Step 6: Add composite unique constraints (name, created_by_id)
+CREATE UNIQUE INDEX IF NOT EXISTS "team_member_types_name_created_by_id_key" 
+ON "team_member_types"("name", "created_by_id");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "team_member_statuses_name_created_by_id_key" 
+ON "team_member_statuses"("name", "created_by_id");
+
+-- Step 7: Add foreign key constraints (if they don't exist)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'team_members_created_by_id_fkey'
+    ) THEN
+        ALTER TABLE "team_members" ADD CONSTRAINT "team_members_created_by_id_fkey" 
+        FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'kpi_entries_created_by_id_fkey'
+    ) THEN
+        ALTER TABLE "kpi_entries" ADD CONSTRAINT "kpi_entries_created_by_id_fkey" 
+        FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'team_member_types_created_by_id_fkey'
+    ) THEN
+        ALTER TABLE "team_member_types" ADD CONSTRAINT "team_member_types_created_by_id_fkey" 
+        FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+    
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'team_member_statuses_created_by_id_fkey'
+    ) THEN
+        ALTER TABLE "team_member_statuses" ADD CONSTRAINT "team_member_statuses_created_by_id_fkey" 
+        FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;

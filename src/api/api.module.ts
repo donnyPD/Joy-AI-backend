@@ -16,6 +16,7 @@ import { CustomMetricDefinitionsModule } from '../custom-metric-definitions/cust
 import { TeamMemberTypesModule } from '../team-member-types/team-member-types/team-member-types.module';
 import { TeamMemberStatusesModule } from '../team-member-statuses/team-member-statuses/team-member-statuses.module';
 import { SettingsModule } from '../settings/settings/settings.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { SettingsModule } from '../settings/settings/settings.module';
     TeamMemberTypesModule,
     TeamMemberStatusesModule,
     SettingsModule,
+    AuthModule,
   ],
   controllers: [ApiController],
 })
