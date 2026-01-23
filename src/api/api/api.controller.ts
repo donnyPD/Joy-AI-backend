@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -1331,35 +1331,25 @@ export class ApiController {
   @UseGuards(JwtAuthGuard)
   @Get('notification-templates/message')
   async getNotificationMessage(@Request() req: any) {
-    try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        throw new Error('User ID not found in request');
-      }
-      const template = await this.notificationTemplateService.getTemplate(userId);
-      return { value: template?.template || '' };
-    } catch (error) {
-      console.error('Error fetching notification message:', error);
-      throw error;
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
     }
+    const template = await this.notificationTemplateService.getTemplate(userId);
+    return { value: template?.template || '' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Put('notification-templates/message')
   async updateNotificationMessage(@Body() data: { value: string }, @Request() req: any) {
-    try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        throw new Error('User ID not found in request');
-      }
-      if (typeof data.value !== 'string') {
-        return { message: 'Invalid message value' };
-      }
-      const template = await this.notificationTemplateService.upsertTemplate(userId, data.value);
-      return { value: template.template };
-    } catch (error) {
-      console.error('Error updating notification message:', error);
-      throw error;
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
     }
+    if (typeof data.value !== 'string') {
+      throw new BadRequestException('Invalid message value');
+    }
+    const template = await this.notificationTemplateService.upsertTemplate(userId, data.value);
+    return { value: template.template };
   }
 }
