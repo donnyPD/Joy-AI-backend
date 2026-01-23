@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -15,7 +15,7 @@ import { InventoryFormSubmissionsService } from '../../inventory-form-submission
 import { CustomMetricDefinitionsService } from '../../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.service';
 import { TeamMemberTypesService } from '../../team-member-types/team-member-types/team-member-types.service';
 import { TeamMemberStatusesService } from '../../team-member-statuses/team-member-statuses/team-member-statuses.service';
-import { SettingsService } from '../../settings/settings/settings.service';
+import { NotificationTemplateService } from '../../notification-templates/notification-templates/notification-template.service';
 
 @Controller()
 export class ApiController {
@@ -35,7 +35,7 @@ export class ApiController {
     private customMetricDefinitionsService: CustomMetricDefinitionsService,
     private teamMemberTypesService: TeamMemberTypesService,
     private teamMemberStatusesService: TeamMemberStatusesService,
-    private settingsService: SettingsService,
+    private notificationTemplateService: NotificationTemplateService,
   ) {}
 
   @Get('status')
@@ -1327,29 +1327,29 @@ export class ApiController {
     }
   }
 
-  // Settings endpoints
-  @Get('settings/notification-message')
-  async getNotificationMessage() {
-    try {
-      const setting = await this.settingsService.getSetting('incident_notification_message');
-      return { value: setting?.value || '' };
-    } catch (error) {
-      console.error('Error fetching notification message:', error);
-      throw error;
+  // Notification Template endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('notification-templates/message')
+  async getNotificationMessage(@Request() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
     }
+    const template = await this.notificationTemplateService.getTemplate(userId);
+    return { value: template?.template || '' };
   }
 
-  @Put('settings/notification-message')
-  async updateNotificationMessage(@Body() data: { value: string }) {
-    try {
-      if (typeof data.value !== 'string') {
-        return { message: 'Invalid message value' };
-      }
-      const setting = await this.settingsService.upsertSetting('incident_notification_message', data.value);
-      return { value: setting.value };
-    } catch (error) {
-      console.error('Error updating notification message:', error);
-      throw error;
+  @UseGuards(JwtAuthGuard)
+  @Put('notification-templates/message')
+  async updateNotificationMessage(@Body() data: { value: string }, @Request() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
     }
+    if (typeof data.value !== 'string') {
+      throw new BadRequestException('Invalid message value');
+    }
+    const template = await this.notificationTemplateService.upsertTemplate(userId, data.value);
+    return { value: template.template };
   }
 }

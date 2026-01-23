@@ -15,7 +15,7 @@ import { InventoryFormSubmissionsModule } from '../inventory-form-submissions/in
 import { CustomMetricDefinitionsModule } from '../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.module';
 import { TeamMemberTypesModule } from '../team-member-types/team-member-types/team-member-types.module';
 import { TeamMemberStatusesModule } from '../team-member-statuses/team-member-statuses/team-member-statuses.module';
-import { SettingsModule } from '../settings/settings/settings.module';
+import { NotificationTemplateModule } from '../notification-templates/notification-templates/notification-template.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -35,7 +35,7 @@ import { AuthModule } from '../auth/auth.module';
     CustomMetricDefinitionsModule,
     TeamMemberTypesModule,
     TeamMemberStatusesModule,
-    SettingsModule,
+    NotificationTemplateModule,
     AuthModule,
   ],
   controllers: [ApiController],
