@@ -1,62 +1,109 @@
--- Add publicFormKey to users table
-ALTER TABLE "users" ADD COLUMN "public_form_key" TEXT;
-CREATE UNIQUE INDEX "users_public_form_key_key" ON "users"("public_form_key");
-CREATE INDEX "users_public_form_key_idx" ON "users"("public_form_key");
+-- Note: public_form_key was already added in migration 20260123170446_add_user_scoping_to_inventory
+-- Skip adding it again to avoid duplicate column error
 
--- Add userId to inventory_categories
-ALTER TABLE "inventory_categories" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_categories_user_id_idx" ON "inventory_categories"("user_id");
-DROP INDEX IF EXISTS "inventory_categories_name_key";
-CREATE UNIQUE INDEX "inventory_categories_user_id_name_key" ON "inventory_categories"("user_id", "name");
-ALTER TABLE "inventory_categories" ADD CONSTRAINT "inventory_categories_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- This migration converts nullable user_id columns from v1 to NOT NULL with defaults
+-- It creates or uses a system user UUID for orphaned inventory data
 
--- Add userId to inventory
-ALTER TABLE "inventory" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_user_id_idx" ON "inventory"("user_id");
-ALTER TABLE "inventory" ADD CONSTRAINT "inventory_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+DECLARE
+  system_user_id TEXT;
+  first_user_id TEXT;
+BEGIN
+  -- Step 1: Try to get the first existing user
+  SELECT id INTO first_user_id FROM users ORDER BY "createdAt" ASC LIMIT 1;
+  
+  -- Step 2: If no users exist, create a system user with a known UUID
+  -- Using a deterministic UUID: '00000000-0000-0000-0000-000000000000'
+  IF first_user_id IS NULL THEN
+    system_user_id := '00000000-0000-0000-0000-000000000000';
+    
+    -- Create system user if it doesn't exist
+    INSERT INTO "users" ("id", "email", "password", "name", "createdAt", "updatedAt")
+    VALUES (
+      system_user_id,
+      'system@joyai.internal',
+      '$2b$10$SYSTEM_USER_PASSWORD_HASH_PLACEHOLDER', -- Placeholder hash, should never be used for login
+      'System User',
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT ("id") DO NOTHING;
+  ELSE
+    -- Use the first existing user
+    system_user_id := first_user_id;
+  END IF;
+  
+  -- Step 3: Update all NULL user_id values to the system/first user UUID
+  UPDATE "inventory_categories" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_stores" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_purchases" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_notes" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_form_config" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_form_submissions" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_snapshots" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_technicians" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  UPDATE "inventory_technician_purchases" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+END $$;
 
--- Add userId to inventory_stores
-ALTER TABLE "inventory_stores" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_stores_user_id_idx" ON "inventory_stores"("user_id");
-DROP INDEX IF EXISTS "inventory_stores_name_key";
-CREATE UNIQUE INDEX "inventory_stores_user_id_name_key" ON "inventory_stores"("user_id", "name");
-ALTER TABLE "inventory_stores" ADD CONSTRAINT "inventory_stores_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Step 4: Create a function to get the default user ID (first user or system user)
+-- This function is STABLE and safe to use in DEFAULT clauses
+-- The DO block above ensures a user exists (either first user or system user)
+CREATE OR REPLACE FUNCTION get_default_user_id() RETURNS TEXT AS $$
+DECLARE
+  user_id TEXT;
+  system_user_id TEXT := '00000000-0000-0000-0000-000000000000';
+BEGIN
+  -- Try to get the first user
+  SELECT id INTO user_id FROM users ORDER BY "createdAt" ASC LIMIT 1;
+  
+  -- If no user exists, return the system user UUID (which should exist from the DO block above)
+  -- This is a fallback in case all users are deleted (shouldn't happen in practice)
+  IF user_id IS NULL THEN
+    RETURN system_user_id;
+  END IF;
+  
+  RETURN user_id;
+END;
+$$ LANGUAGE plpgsql STABLE;
 
--- Add userId to inventory_purchases
-ALTER TABLE "inventory_purchases" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_purchases_user_id_idx" ON "inventory_purchases"("user_id");
-ALTER TABLE "inventory_purchases" ADD CONSTRAINT "inventory_purchases_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Step 5: Make columns NOT NULL and set defaults using the function
+-- Update and alter inventory_categories.user_id
+ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_notes
-ALTER TABLE "inventory_notes" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_notes_user_id_idx" ON "inventory_notes"("user_id");
-ALTER TABLE "inventory_notes" ADD CONSTRAINT "inventory_notes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory.user_id
+ALTER TABLE "inventory" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_form_config
-ALTER TABLE "inventory_form_config" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_form_config_user_id_idx" ON "inventory_form_config"("user_id");
-ALTER TABLE "inventory_form_config" ADD CONSTRAINT "inventory_form_config_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory_stores.user_id
+ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_form_submissions
-ALTER TABLE "inventory_form_submissions" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_form_submissions_user_id_idx" ON "inventory_form_submissions"("user_id");
-ALTER TABLE "inventory_form_submissions" ADD CONSTRAINT "inventory_form_submissions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory_purchases.user_id
+ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_snapshots
-ALTER TABLE "inventory_snapshots" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_snapshots_user_id_idx" ON "inventory_snapshots"("user_id");
-DROP INDEX IF EXISTS "inventory_snapshots_month_year_key";
-CREATE UNIQUE INDEX "inventory_snapshots_user_id_month_year_key" ON "inventory_snapshots"("user_id", "month", "year");
-ALTER TABLE "inventory_snapshots" ADD CONSTRAINT "inventory_snapshots_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory_notes.user_id
+ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_technicians
-ALTER TABLE "inventory_technicians" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_technicians_user_id_idx" ON "inventory_technicians"("user_id");
-DROP INDEX IF EXISTS "inventory_technicians_tech_name_key";
-CREATE UNIQUE INDEX "inventory_technicians_user_id_tech_name_key" ON "inventory_technicians"("user_id", "tech_name");
-ALTER TABLE "inventory_technicians" ADD CONSTRAINT "inventory_technicians_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory_form_config.user_id
+ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
 
--- Add userId to inventory_technician_purchases
-ALTER TABLE "inventory_technician_purchases" ADD COLUMN "user_id" TEXT NOT NULL DEFAULT '';
-CREATE INDEX "inventory_technician_purchases_user_id_idx" ON "inventory_technician_purchases"("user_id");
-ALTER TABLE "inventory_technician_purchases" ADD CONSTRAINT "inventory_technician_purchases_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Update and alter inventory_form_submissions.user_id
+ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+
+-- Update and alter inventory_snapshots.user_id
+ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+
+-- Update and alter inventory_technicians.user_id
+ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+
+-- Update and alter inventory_technician_purchases.user_id
+ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET NOT NULL;
+ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
