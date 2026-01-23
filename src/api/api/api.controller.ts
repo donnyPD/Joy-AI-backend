@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -12,15 +12,18 @@ import { InventorySnapshotsService } from '../../inventory-snapshots/inventory-s
 import { InventoryStoresService } from '../../inventory-stores/inventory-stores/inventory-stores.service';
 import { InventoryPurchaseItemsService } from '../../inventory-purchase-items/inventory-purchase-items/inventory-purchase-items.service';
 import { InventoryFormSubmissionsService } from '../../inventory-form-submissions/inventory-form-submissions/inventory-form-submissions.service';
+import { InventoryFormConfigService } from '../../inventory-form-config/inventory-form-config/inventory-form-config.service';
+import { InventoryColumnDefinitionsService } from '../../inventory-column-definitions/inventory-column-definitions/inventory-column-definitions.service';
 import { CustomMetricDefinitionsService } from '../../custom-metric-definitions/custom-metric-definitions/custom-metric-definitions.service';
 import { TeamMemberTypesService } from '../../team-member-types/team-member-types/team-member-types.service';
 import { TeamMemberStatusesService } from '../../team-member-statuses/team-member-statuses/team-member-statuses.service';
-import { SettingsService } from '../../settings/settings/settings.service';
 import { InvoicesService } from '../../invoices/invoices/invoices.service';
 import { QuotesService } from '../../quotes/quotes/quotes.service';
 import { JobsService } from '../../jobs/jobs/jobs.service';
 import { VisitsService } from '../../visits/visits/visits.service';
 import { TimesheetsService } from '../../timesheets/timesheets/timesheets.service';
+import { NotificationTemplateService } from '../../notification-templates/notification-templates/notification-template.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller()
 export class ApiController {
@@ -37,15 +40,18 @@ export class ApiController {
     private inventoryStoresService: InventoryStoresService,
     private inventoryPurchaseItemsService: InventoryPurchaseItemsService,
     private inventoryFormSubmissionsService: InventoryFormSubmissionsService,
+    private inventoryFormConfigService: InventoryFormConfigService,
+    private inventoryColumnDefinitionsService: InventoryColumnDefinitionsService,
     private customMetricDefinitionsService: CustomMetricDefinitionsService,
     private teamMemberTypesService: TeamMemberTypesService,
     private teamMemberStatusesService: TeamMemberStatusesService,
-    private settingsService: SettingsService,
     private invoicesService: InvoicesService,
     private quotesService: QuotesService,
     private jobsService: JobsService,
     private visitsService: VisitsService,
     private timesheetsService: TimesheetsService,
+    private notificationTemplateService: NotificationTemplateService,
+    private prisma: PrismaService,
   ) {}
 
   @Get('status')
@@ -529,10 +535,15 @@ export class ApiController {
   }
 
   // Inventory Notes endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('team-members/:id/notes')
-  async getTeamMemberNotes(@Param('id') id: string) {
+  async getTeamMemberNotes(@Param('id') id: string, @Request() req: any) {
     try {
-      const notes = await this.inventoryNotesService.findAllByTeamMember(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const notes = await this.inventoryNotesService.findAllByTeamMember(id, userId);
       return notes;
     } catch (error) {
       console.error('Error fetching team member notes:', error);
@@ -540,10 +551,55 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('inventory/notes')
-  async createInventoryNote(@Body() data: any) {
+  async createInventoryNote(@Body() data: any, @Request() req: any) {
     try {
-      const note = await this.inventoryNotesService.create(data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const { noteText, noteType, teamMemberId } = data;
+
+      if (!noteText || typeof noteText !== 'string' || noteText.trim() === '') {
+        return { error: 'Note text is required' };
+      }
+
+      // Validate noteType - must be explicitly 'technician' or defaults to 'general'
+      const validNoteType = noteType === 'technician' ? 'technician' : 'general';
+
+      // Validate technician notes require a teamMemberId
+      if (validNoteType === 'technician' && !teamMemberId) {
+        return { error: 'Technician notes require a team member to be selected' };
+      }
+
+      // Reject teamMemberId for general notes (enforce consistency)
+      if (validNoteType === 'general' && teamMemberId) {
+        return { error: 'General notes cannot be associated with a technician' };
+      }
+
+      // Generate NY timestamp - matching Replit format
+      const now = new Date();
+      const nyFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const nyTimestamp = nyFormatter.format(now);
+
+      const note = await this.inventoryNotesService.create({
+        noteText: noteText.trim(),
+        nyTimestamp,
+        noteType: validNoteType,
+        ...(validNoteType === 'technician' && teamMemberId
+          ? { teamMember: { connect: { id: teamMemberId } } }
+          : {}),
+      }, userId);
+
       return note;
     } catch (error) {
       console.error('Error creating inventory note:', error);
@@ -551,10 +607,19 @@ export class ApiController {
     }
   }
 
-  @Put('inventory/notes/:id')
-  async updateInventoryNote(@Param('id') id: string, @Body() data: any) {
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory/notes/:id')
+  async updateInventoryNote(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const note = await this.inventoryNotesService.update(id, data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const { noteText } = data;
+      if (!noteText || typeof noteText !== 'string' || noteText.trim() === '') {
+        return { error: 'Note text is required' };
+      }
+      const note = await this.inventoryNotesService.update(id, { noteText: noteText.trim() }, userId);
       return note;
     } catch (error) {
       console.error('Error updating inventory note:', error);
@@ -562,11 +627,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('inventory/notes/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteInventoryNote(@Param('id') id: string) {
+  async deleteInventoryNote(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.inventoryNotesService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryNotesService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory note:', error);
@@ -575,17 +645,47 @@ export class ApiController {
   }
 
   // Inventory Purchases endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('team-members/:id/inventory-purchases')
   async getTeamMemberInventoryPurchases(
     @Param('id') id: string,
+    @Request() req: any,
     @Query('year') year?: string,
   ) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      // Get team member to get their name
+      const teamMember = await this.teamMembersService.findOne(id, userId);
+      if (!teamMember) {
+        console.log(`Team member not found for ID: ${id}`);
+        return [];
+      }
+
+      console.log(`Looking for technician with name: ${teamMember.name}`);
+
+      // Find inventory technician by matching name
+      const technician = await this.inventoryTechniciansService.findByName(teamMember.name, userId);
+      if (!technician) {
+        // If no technician found, return empty array
+        console.log(`No technician found with name: ${teamMember.name}`);
+        return [];
+      }
+
+      console.log(`Found technician with ID: ${technician.id}, techName: ${technician.techName}`);
+
       const yearNum = year ? parseInt(year, 10) : undefined;
+      console.log(`Fetching purchases for technician ${technician.id}, year: ${yearNum || 'all'}`);
+      
       const purchases = await this.inventoryPurchasesService.findAllByTeamMember(
-        id,
+        technician.id,
         yearNum,
       );
+      
+      console.log(`Found ${purchases.length} purchases for technician ${technician.id}`);
       return purchases;
     } catch (error) {
       console.error('Error fetching team member inventory purchases:', error);
@@ -593,10 +693,15 @@ export class ApiController {
     }
   }
 
-  @Put('inventory/purchases/:id')
-  async updateInventoryPurchase(@Param('id') id: string, @Body() data: any) {
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory/purchases/:id')
+  async updateInventoryPurchase(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const purchase = await this.inventoryPurchasesService.update(id, data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const purchase = await this.inventoryPurchaseItemsService.update(id, data, userId);
       return purchase;
     } catch (error) {
       console.error('Error updating inventory purchase:', error);
@@ -604,11 +709,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('inventory/purchases/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteInventoryPurchase(@Param('id') id: string) {
+  async deleteInventoryPurchase(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.inventoryPurchasesService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryPurchaseItemsService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory purchase:', error);
@@ -616,11 +726,33 @@ export class ApiController {
     }
   }
 
-  // Inventory Categories endpoints
-  @Get('inventory/categories')
-  async getInventoryCategories() {
+  @UseGuards(JwtAuthGuard)
+  @Delete('inventory/purchases/order/:orderId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteInventoryPurchasesByOrderId(@Param('orderId') orderId: string, @Request() req: any) {
     try {
-      const categories = await this.inventoryCategoriesService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryPurchaseItemsService.deleteByOrderId(orderId, userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting inventory purchases by orderId:', error);
+      throw error;
+    }
+  }
+
+  // Inventory Categories endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/categories')
+  async getInventoryCategories(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const categories = await this.inventoryCategoriesService.findAll(userId);
       return categories;
     } catch (error) {
       console.error('Error fetching inventory categories:', error);
@@ -628,9 +760,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('inventory/categories')
-  async createInventoryCategory(@Body() data: any) {
+  async createInventoryCategory(@Body() data: any, @Request() req: any) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const { name } = data;
       if (!name || typeof name !== 'string' || name.trim() === '') {
         return { error: 'Category name is required' };
@@ -638,7 +775,7 @@ export class ApiController {
       const category = await this.inventoryCategoriesService.create({
         name: name.trim(),
         isVisibleOnForm: data.isVisibleOnForm !== undefined ? data.isVisibleOnForm : true,
-      });
+      }, userId);
       return category;
     } catch (error) {
       console.error('Error creating inventory category:', error);
@@ -646,10 +783,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory/categories/:id')
-  async updateInventoryCategory(@Param('id') id: string, @Body() data: any) {
+  async updateInventoryCategory(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const category = await this.inventoryCategoriesService.update(id, data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const category = await this.inventoryCategoriesService.update(id, data, userId);
       return category;
     } catch (error) {
       console.error('Error updating inventory category:', error);
@@ -657,11 +799,36 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory/categories/:id/visibility')
+  async updateInventoryCategoryVisibility(@Param('id') id: string, @Body() data: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const { isVisibleOnForm } = data;
+      if (typeof isVisibleOnForm !== 'boolean') {
+        return { error: 'isVisibleOnForm must be a boolean' };
+      }
+      const category = await this.inventoryCategoriesService.update(id, { isVisibleOnForm }, userId);
+      return category;
+    } catch (error) {
+      console.error('Error updating inventory category visibility:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete('inventory/categories/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteInventoryCategory(@Param('id') id: string) {
+  async deleteInventoryCategory(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.inventoryCategoriesService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryCategoriesService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory category:', error);
@@ -670,16 +837,21 @@ export class ApiController {
   }
 
   // Inventory endpoints - NOTE: Must come before /inventory/:id
+  @UseGuards(JwtAuthGuard)
   @Get('inventory')
-  async getInventory(@Query('type') type?: string, @Query('categoryId') categoryId?: string) {
+  async getInventory(@Request() req: any, @Query('type') type?: string, @Query('categoryId') categoryId?: string) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       let items;
       if (categoryId) {
-        items = await this.inventoryService.findByCategory(categoryId);
+        items = await this.inventoryService.findByCategory(categoryId, userId);
       } else if (type) {
-        items = await this.inventoryService.findByType(type);
+        items = await this.inventoryService.findByType(type, userId);
       } else {
-        items = await this.inventoryService.findAll();
+        items = await this.inventoryService.findAll(userId);
       }
       return items;
     } catch (error) {
@@ -688,9 +860,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('inventory')
-  async createInventoryItem(@Body() data: any) {
+  async createInventoryItem(@Body() data: any, @Request() req: any) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const {
         name,
         type,
@@ -706,13 +883,13 @@ export class ApiController {
       }
 
       // Verify category exists
-      const category = await this.inventoryCategoriesService.findOne(categoryId);
+      const category = await this.inventoryCategoriesService.findOne(categoryId, userId);
       if (!category) {
         return { error: 'Invalid category' };
       }
 
       // Get the next row number for this category - ported exact logic
-      const existingItems = await this.inventoryService.findByCategory(categoryId);
+      const existingItems = await this.inventoryService.findByCategory(categoryId, userId);
       const maxRowNumber = existingItems.reduce((max, item) => {
         return Math.max(max, item.rowNumber || 0);
       }, 0);
@@ -727,7 +904,7 @@ export class ApiController {
         pricePerUnit: pricePerUnit || '',
         threshold: threshold || 3,
         rowNumber: maxRowNumber + 1,
-      });
+      }, userId);
 
       return newItem;
     } catch (error) {
@@ -736,12 +913,318 @@ export class ApiController {
     }
   }
 
-  @Get('inventory/:id')
-  async getInventoryItem(@Param('id') id: string) {
+  // Inventory Notes endpoints (for inventory page, not team member specific)
+  // NOTE: Must come before /inventory/:id to avoid route conflicts
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/notes')
+  async getInventoryNotes(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
     try {
-      const item = await this.inventoryService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const monthNum = parseInt(month || '');
+      const yearNum = parseInt(year || '');
+
+      if (isNaN(monthNum) || isNaN(yearNum)) {
+        return [];
+      }
+
+      // Get all notes for the user and filter by month/year - ported exact logic
+      const allNotes = await this.inventoryNotesService.findAll(userId);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthName = monthNames[monthNum - 1];
+
+      const filteredNotes = allNotes.filter((note) => {
+        const dateStr = note.nyTimestamp;
+        return dateStr.includes(monthName) && dateStr.includes(yearNum.toString());
+      });
+
+      return filteredNotes || [];
+    } catch (error) {
+      console.error('Error fetching inventory notes:', error);
+      return [];
+    }
+  }
+
+  // Inventory Snapshots endpoints
+  // NOTE: Must come before /inventory/:id to avoid route conflicts
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/snapshot')
+  async getInventorySnapshot(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const monthNum = parseInt(month || '');
+      const yearNum = parseInt(year || '');
+
+      if (isNaN(monthNum) || isNaN(yearNum)) {
+        return { error: 'Month and year are required' };
+      }
+
+      const snapshot = await this.inventorySnapshotsService.findByMonthYear(monthNum, yearNum, userId);
+      return snapshot || null;
+    } catch (error) {
+      console.error('Error fetching inventory snapshot:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/snapshot-months')
+  async getSnapshotMonths(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const months = await this.inventorySnapshotsService.getAvailableMonths(userId);
+      return months;
+    } catch (error) {
+      console.error('Error fetching snapshot months:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('inventory/auto-snapshot')
+  async autoCreateSnapshot(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      // Ported exact logic from routes.ts
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      // Calculate previous month
+      let prevMonth = currentMonth - 1;
+      let prevYear = currentYear;
+      if (prevMonth === 0) {
+        prevMonth = 12;
+        prevYear = currentYear - 1;
+      }
+
+      // Check if snapshot exists for previous month
+      const existingSnapshot = await this.inventorySnapshotsService.findByMonthYear(prevMonth, prevYear, userId);
+
+      if (!existingSnapshot) {
+        // Create snapshot for previous month using current inventory data
+        const inventoryItems = await this.inventoryService.findAll(userId);
+        const snapshotData = inventoryItems.map((item) => ({
+          name: item.name,
+          type: item.type,
+          totalRequested: item.totalRequested || 0,
+          totalInventory: item.totalInventory || 0,
+          pricePerUnit: item.pricePerUnit,
+          threshold: item.threshold || 0,
+          rowNumber: item.rowNumber,
+        }));
+
+        const snapshot = await this.inventorySnapshotsService.create(prevMonth, prevYear, snapshotData, userId);
+        return { created: true, snapshot };
+      } else {
+        return { created: false, snapshot: existingSnapshot };
+      }
+    } catch (error) {
+      console.error('Error in auto-snapshot:', error);
+      throw error;
+    }
+  }
+
+  // Inventory Stores endpoints
+  // NOTE: Must come before /inventory/:id to avoid route conflicts
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/stores')
+  async getInventoryStores(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const stores = await this.inventoryStoresService.findAll(userId);
+      return stores;
+    } catch (error) {
+      console.error('Error fetching inventory stores:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('inventory/stores')
+  async createInventoryStore(@Body() data: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const { name } = data;
+      if (!name || typeof name !== 'string' || name.trim() === '') {
+        return { error: 'Store name is required' };
+      }
+      const store = await this.inventoryStoresService.create({
+        name: name.trim(),
+      }, userId);
+      return store;
+    } catch (error) {
+      console.error('Error creating inventory store:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('inventory/stores/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteInventoryStore(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryStoresService.delete(id, userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting inventory store:', error);
+      throw error;
+    }
+  }
+
+  // Inventory Purchases endpoints (different from technician purchases)
+  // NOTE: Must come before /inventory/:id to avoid route conflicts
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/purchases')
+  async getInventoryPurchases(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const monthNum = parseInt(month || '');
+      const yearNum = parseInt(year || '');
+
+      if (isNaN(monthNum) || isNaN(yearNum)) {
+        return [];
+      }
+
+      const purchases = await this.inventoryPurchaseItemsService.findByMonth(monthNum, yearNum, userId);
+      return purchases || [];
+    } catch (error) {
+      console.error('Error fetching inventory purchases:', error);
+      return [];
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('inventory/purchases')
+  async createInventoryPurchases(@Body() data: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const { purchases, technicianName } = data;
+      if (!purchases || !Array.isArray(purchases) || purchases.length === 0) {
+        return { error: 'Purchases array is required' };
+      }
+
+      // Transform purchases to Prisma format
+      const purchaseData = purchases.map((p: any) => ({
+        orderId: p.orderId || `LEGACY-${Date.now()}-${Math.random()}`,
+        itemName: p.itemName,
+        orderedFrom: p.orderedFrom,
+        amount: p.amount,
+        quantity: p.quantity || 1,
+        purchasedAt: p.purchasedAt,
+        ...(p.itemId ? { item: { connect: { id: p.itemId } } } : {}),
+      }));
+
+      const created = await this.inventoryPurchaseItemsService.createMany(purchaseData, userId);
+
+      // If technician is specified, also create InventoryTechnicianPurchase records
+      if (technicianName && technicianName.trim()) {
+        try {
+          console.log(`Creating technician purchase for: ${technicianName.trim()}`);
+          
+          // Find or create inventory technician
+          let technician = await this.inventoryTechniciansService.findByName(technicianName.trim(), userId);
+          if (!technician) {
+            console.log(`Technician not found, creating new one: ${technicianName.trim()}`);
+            technician = await this.inventoryTechniciansService.create({
+              techName: technicianName.trim(),
+            }, userId);
+            console.log(`Created technician with ID: ${technician.id}`);
+          } else {
+            console.log(`Found existing technician with ID: ${technician.id}`);
+          }
+
+          // Format purchase date (use the first purchase's date or today)
+          const purchaseDate = purchases[0]?.purchasedAt || new Date().toISOString().split('T')[0];
+          console.log(`Purchase date: ${purchaseDate}`);
+          
+          // Format items as a readable string
+          const itemsList = purchases.map((p: any) => 
+            `${p.itemName} (Qty: ${p.quantity}, Amount: $${p.amount})`
+          ).join(', ');
+          
+          // Create parsed items structure
+          const itemsParsed = purchases.map((p: any) => ({
+            itemName: p.itemName,
+            quantity: p.quantity || 1,
+            amount: p.amount,
+            orderedFrom: p.orderedFrom,
+          }));
+
+          console.log(`Creating technician purchase with ${purchases.length} items`);
+          
+          // Create InventoryTechnicianPurchase record
+          const techPurchase = await this.inventoryTechniciansService.createTechnicianPurchase({
+            technician: { connect: { id: technician.id } },
+            purchaseDate,
+            itemsRaw: itemsList,
+            itemsParsed,
+            isCompleted: false,
+          }, userId);
+
+          console.log(`Successfully created technician purchase with ID: ${techPurchase.id}`);
+
+          // Update technician's latest purchase date
+          await this.inventoryTechniciansService.update(technician.id, {
+            latestPurchaseDate: purchaseDate,
+          }, userId);
+          
+          console.log(`Updated technician latest purchase date to: ${purchaseDate}`);
+        } catch (techError) {
+          // Log error but don't fail the purchase creation
+          console.error('Error creating technician purchase record:', techError);
+          console.error('Error stack:', techError.stack);
+        }
+      } else {
+        console.log('No technician name provided, skipping technician purchase creation');
+      }
+
+      return created;
+    } catch (error) {
+      console.error('Error creating inventory purchases:', error);
+      throw error;
+    }
+  }
+
+  // Inventory item by ID - MUST come after all specific routes
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/:id')
+  async getInventoryItem(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const item = await this.inventoryService.findOne(id, userId);
       if (!item) {
-        return { error: 'Inventory item not found' };
+        throw new NotFoundException('Inventory item not found');
       }
       return item;
     } catch (error) {
@@ -750,9 +1233,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put('inventory/:id')
-  async updateInventoryItem(@Param('id') id: string, @Body() data: any) {
+  async updateInventoryItem(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const {
         name,
         totalRequested,
@@ -789,8 +1277,11 @@ export class ApiController {
       if (preferredStore !== undefined) {
         updateData.preferredStore = preferredStore;
       }
+      if (data.dynamicFields !== undefined) {
+        updateData.dynamicFields = data.dynamicFields;
+      }
 
-      const item = await this.inventoryService.update(id, updateData);
+      const item = await this.inventoryService.update(id, updateData, userId);
       return item;
     } catch (error) {
       console.error('Error updating inventory item:', error);
@@ -798,11 +1289,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('inventory/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteInventoryItem(@Param('id') id: string) {
+  async deleteInventoryItem(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.inventoryService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory item:', error);
@@ -811,10 +1307,15 @@ export class ApiController {
   }
 
   // Inventory Technicians endpoints - NOTE: Must come before /inventory/:id
+  @UseGuards(JwtAuthGuard)
   @Get('inventory/technicians')
-  async getInventoryTechnicians() {
+  async getInventoryTechnicians(@Request() req: any) {
     try {
-      const technicians = await this.inventoryTechniciansService.getLatestTechnicianPurchases();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const technicians = await this.inventoryTechniciansService.getLatestTechnicianPurchases(userId);
       return technicians;
     } catch (error) {
       console.error('Error fetching inventory technicians:', error);
@@ -822,10 +1323,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('inventory/technicians/:id/purchases')
-  async getTechnicianPurchases(@Param('id') id: string) {
+  async getTechnicianPurchases(@Param('id') id: string, @Request() req: any) {
     try {
-      const purchases = await this.inventoryTechniciansService.getTechnicianPurchases(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const purchases = await this.inventoryTechniciansService.getTechnicianPurchases(id, userId);
       return purchases;
     } catch (error) {
       console.error('Error fetching technician purchases:', error);
@@ -833,9 +1339,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('inventory/technicians-by-month')
-  async getTechniciansByMonth(@Query('month') month?: string, @Query('year') year?: string, @Query('includeCompleted') includeCompleted?: string) {
+  async getTechniciansByMonth(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string, @Query('includeCompleted') includeCompleted?: string) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const monthNum = parseInt(month || '');
       const yearNum = parseInt(year || '');
       const includeHidden = includeCompleted === 'true';
@@ -847,6 +1358,7 @@ export class ApiController {
       const technicians = await this.inventoryTechniciansService.getTechnicianPurchasesByMonth(
         monthNum,
         yearNum,
+        userId,
         includeHidden,
       );
       return technicians || [];
@@ -856,10 +1368,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory/technicians/purchases/:id/complete')
-  async completePurchase(@Param('id') id: string) {
+  async completePurchase(@Param('id') id: string, @Request() req: any) {
     try {
-      const purchase = await this.inventoryTechniciansService.markPurchaseCompleted(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const purchase = await this.inventoryTechniciansService.markPurchaseCompleted(id, userId);
       if (!purchase) {
         return { error: 'Purchase not found' };
       }
@@ -870,10 +1387,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory/technicians/purchases/:id/uncomplete')
-  async uncompletePurchase(@Param('id') id: string) {
+  async uncompletePurchase(@Param('id') id: string, @Request() req: any) {
     try {
-      const purchase = await this.inventoryTechniciansService.markPurchaseUncompleted(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const purchase = await this.inventoryTechniciansService.markPurchaseUncompleted(id, userId);
       if (!purchase) {
         return { error: 'Purchase not found' };
       }
@@ -884,9 +1406,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory/technicians/:id/complete-all')
-  async completeAllPurchases(@Param('id') id: string, @Query('month') month?: string, @Query('year') year?: string) {
+  async completeAllPurchases(@Param('id') id: string, @Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const monthNum = parseInt(month || '');
       const yearNum = parseInt(year || '');
 
@@ -898,6 +1425,7 @@ export class ApiController {
         id,
         monthNum,
         yearNum,
+        userId,
       );
       return purchases;
     } catch (error) {
@@ -906,17 +1434,22 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('inventory/technicians/purchases/all')
-  async getAllPurchases(@Query('month') month?: string, @Query('year') year?: string) {
+  async getAllPurchases(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const monthNum = parseInt(month || '');
       const yearNum = parseInt(year || '');
 
       if (!isNaN(monthNum) && !isNaN(yearNum)) {
-        const purchases = await this.inventoryTechniciansService.getAllPurchasesForMonth(monthNum, yearNum);
+        const purchases = await this.inventoryTechniciansService.getAllPurchasesForMonth(monthNum, yearNum, userId);
         return purchases;
       } else {
-        const purchases = await this.inventoryTechniciansService.getAllTechnicianPurchases(true);
+        const purchases = await this.inventoryTechniciansService.getAllTechnicianPurchases(userId, true);
         return purchases;
       }
     } catch (error) {
@@ -925,199 +1458,16 @@ export class ApiController {
     }
   }
 
-  // Inventory Notes endpoints (for inventory page, not team member specific)
-  @Get('inventory/notes')
-  async getInventoryNotes(@Query('month') month?: string, @Query('year') year?: string) {
-    try {
-      const monthNum = parseInt(month || '');
-      const yearNum = parseInt(year || '');
-
-      if (isNaN(monthNum) || isNaN(yearNum)) {
-        return [];
-      }
-
-      // Get all notes and filter by month/year - ported exact logic
-      const allNotes = await this.inventoryNotesService.findAll();
-      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const monthName = monthNames[monthNum - 1];
-
-      const filteredNotes = allNotes.filter((note) => {
-        const dateStr = note.nyTimestamp;
-        return dateStr.includes(monthName) && dateStr.includes(yearNum.toString());
-      });
-
-      return filteredNotes || [];
-    } catch (error) {
-      console.error('Error fetching inventory notes:', error);
-      return [];
-    }
-  }
-
-  // Inventory Snapshots endpoints
-  @Get('inventory/snapshot')
-  async getInventorySnapshot(@Query('month') month?: string, @Query('year') year?: string) {
-    try {
-      const monthNum = parseInt(month || '');
-      const yearNum = parseInt(year || '');
-
-      if (isNaN(monthNum) || isNaN(yearNum)) {
-        return { error: 'Month and year are required' };
-      }
-
-      const snapshot = await this.inventorySnapshotsService.findByMonthYear(monthNum, yearNum);
-      return snapshot || null;
-    } catch (error) {
-      console.error('Error fetching inventory snapshot:', error);
-      throw error;
-    }
-  }
-
-  @Get('inventory/snapshot-months')
-  async getSnapshotMonths() {
-    try {
-      const months = await this.inventorySnapshotsService.getAvailableMonths();
-      return months;
-    } catch (error) {
-      console.error('Error fetching snapshot months:', error);
-      throw error;
-    }
-  }
-
-  @Post('inventory/auto-snapshot')
-  async autoCreateSnapshot() {
-    try {
-      // Ported exact logic from routes.ts
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
-
-      // Calculate previous month
-      let prevMonth = currentMonth - 1;
-      let prevYear = currentYear;
-      if (prevMonth === 0) {
-        prevMonth = 12;
-        prevYear = currentYear - 1;
-      }
-
-      // Check if snapshot exists for previous month
-      const existingSnapshot = await this.inventorySnapshotsService.findByMonthYear(prevMonth, prevYear);
-
-      if (!existingSnapshot) {
-        // Create snapshot for previous month using current inventory data
-        const inventoryItems = await this.inventoryService.findAll();
-        const snapshotData = inventoryItems.map((item) => ({
-          name: item.name,
-          type: item.type,
-          totalRequested: item.totalRequested || 0,
-          totalInventory: item.totalInventory || 0,
-          pricePerUnit: item.pricePerUnit,
-          threshold: item.threshold || 0,
-          rowNumber: item.rowNumber,
-        }));
-
-        const snapshot = await this.inventorySnapshotsService.create(prevMonth, prevYear, snapshotData);
-        return { created: true, snapshot };
-      } else {
-        return { created: false, snapshot: existingSnapshot };
-      }
-    } catch (error) {
-      console.error('Error in auto-snapshot:', error);
-      throw error;
-    }
-  }
-
-  // Inventory Stores endpoints
-  @Get('inventory/stores')
-  async getInventoryStores() {
-    try {
-      const stores = await this.inventoryStoresService.findAll();
-      return stores;
-    } catch (error) {
-      console.error('Error fetching inventory stores:', error);
-      throw error;
-    }
-  }
-
-  @Post('inventory/stores')
-  async createInventoryStore(@Body() data: any) {
-    try {
-      const { name } = data;
-      if (!name || typeof name !== 'string' || name.trim() === '') {
-        return { error: 'Store name is required' };
-      }
-      const store = await this.inventoryStoresService.create({
-        name: name.trim(),
-      });
-      return store;
-    } catch (error) {
-      console.error('Error creating inventory store:', error);
-      throw error;
-    }
-  }
-
-  @Delete('inventory/stores/:id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteInventoryStore(@Param('id') id: string) {
-    try {
-      await this.inventoryStoresService.delete(id);
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting inventory store:', error);
-      throw error;
-    }
-  }
-
-  // Inventory Purchases endpoints (different from technician purchases)
-  @Get('inventory/purchases')
-  async getInventoryPurchases(@Query('month') month?: string, @Query('year') year?: string) {
-    try {
-      const monthNum = parseInt(month || '');
-      const yearNum = parseInt(year || '');
-
-      if (isNaN(monthNum) || isNaN(yearNum)) {
-        return [];
-      }
-
-      const purchases = await this.inventoryPurchaseItemsService.findByMonth(monthNum, yearNum);
-      return purchases || [];
-    } catch (error) {
-      console.error('Error fetching inventory purchases:', error);
-      return [];
-    }
-  }
-
-  @Post('inventory/purchases')
-  async createInventoryPurchases(@Body() data: any) {
-    try {
-      const { purchases } = data;
-      if (!purchases || !Array.isArray(purchases) || purchases.length === 0) {
-        return { error: 'Purchases array is required' };
-      }
-
-      // Transform purchases to Prisma format
-      const purchaseData = purchases.map((p: any) => ({
-        orderId: p.orderId || `LEGACY-${Date.now()}-${Math.random()}`,
-        itemId: p.itemId || null,
-        itemName: p.itemName,
-        orderedFrom: p.orderedFrom,
-        amount: p.amount,
-        quantity: p.quantity || 1,
-        purchasedAt: p.purchasedAt,
-        ...(p.itemId ? { item: { connect: { id: p.itemId } } } : {}),
-      }));
-
-      const created = await this.inventoryPurchaseItemsService.createMany(purchaseData);
-      return created;
-    } catch (error) {
-      console.error('Error creating inventory purchases:', error);
-      throw error;
-    }
-  }
 
   // Inventory Form Submissions endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('inventory-form/submissions')
-  async getInventoryFormSubmissions(@Query('month') month?: string, @Query('year') year?: string) {
+  async getInventoryFormSubmissions(@Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       const monthNum = parseInt(month || '');
       const yearNum = parseInt(year || '');
 
@@ -1125,11 +1475,167 @@ export class ApiController {
         return [];
       }
 
-      const submissions = await this.inventoryFormSubmissionsService.findByMonth(monthNum, yearNum);
+      const submissions = await this.inventoryFormSubmissionsService.findByMonth(monthNum, yearNum, userId);
       return submissions || [];
     } catch (error) {
       console.error('Error fetching form submissions:', error);
       return [];
+    }
+  }
+
+  // Inventory Form Config endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory-form/config')
+  async getInventoryFormConfig(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const formConfig = await this.inventoryFormConfigService.findAll(userId);
+      const categories = await this.inventoryCategoriesService.findAll(userId);
+      const inventory = await this.inventoryService.findAll(userId);
+
+      return {
+        formConfig,
+        categories,
+        inventory,
+      };
+    } catch (error) {
+      console.error('Error fetching form config:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory-form/config/bulk')
+  async bulkUpdateInventoryFormConfig(@Body() body: { configs: any[] }, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      if (!Array.isArray(body.configs)) {
+        return { message: 'Configs array is required' };
+      }
+
+      const results = await this.inventoryFormConfigService.bulkUpsert(body.configs, userId);
+      return { success: true, updated: results.length };
+    } catch (error) {
+      console.error('Error updating form configs:', error);
+      throw error;
+    }
+  }
+
+  // Inventory Column Definitions endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory-column-definitions')
+  async getInventoryColumnDefinitions(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const columns = await this.inventoryColumnDefinitionsService.findAll(userId);
+      return columns;
+    } catch (error) {
+      console.error('Error fetching inventory column definitions:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('inventory-column-definitions')
+  async createInventoryColumnDefinition(@Body() body: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      if (!body.columnKey || !body.columnLabel) {
+        return { message: 'Column key and label are required' };
+      }
+
+      // Generate column key if not provided (from label)
+      const columnKey = body.columnKey || body.columnLabel.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      
+      const column = await this.inventoryColumnDefinitionsService.create(
+        {
+          columnKey,
+          columnLabel: body.columnLabel,
+          displayOrder: body.displayOrder ?? 0,
+          isVisible: body.isVisible !== false,
+        },
+        userId
+      );
+      return column;
+    } catch (error) {
+      console.error('Error creating inventory column definition:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory-column-definitions/:id')
+  async updateInventoryColumnDefinition(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      const column = await this.inventoryColumnDefinitionsService.update(
+        id,
+        {
+          columnLabel: body.columnLabel,
+          displayOrder: body.displayOrder,
+          isVisible: body.isVisible,
+        },
+        userId
+      );
+      return column;
+    } catch (error) {
+      console.error('Error updating inventory column definition:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('inventory-column-definitions/:id')
+  async deleteInventoryColumnDefinition(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      await this.inventoryColumnDefinitionsService.delete(id, userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting inventory column definition:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory-column-definitions/reorder')
+  async reorderInventoryColumnDefinitions(@Body() body: { updates: Array<{ id: string; displayOrder: number }> }, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      if (!Array.isArray(body.updates)) {
+        return { message: 'Updates array is required' };
+      }
+
+      const results = await this.inventoryColumnDefinitionsService.reorder(body.updates, userId);
+      return { success: true, updated: results.length };
+    } catch (error) {
+      console.error('Error reordering inventory column definitions:', error);
+      throw error;
     }
   }
 
@@ -1337,28 +1843,198 @@ export class ApiController {
     }
   }
 
-  // Settings endpoints
-  @Get('settings/notification-message')
-  async getNotificationMessage() {
+  // Notification Template endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('notification-templates/message')
+  async getNotificationMessage(@Request() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
+    }
+    const template = await this.notificationTemplateService.getTemplate(userId);
+    return { value: template?.template || '' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('notification-templates/message')
+  async updateNotificationMessage(@Body() data: { value: string }, @Request() req: any) {
+    const userId = req.user?.userId;
+    if (!userId) {
+      throw new UnauthorizedException();
+    }
+    if (typeof data.value !== 'string') {
+      throw new BadRequestException('Invalid message value');
+    }
+    const template = await this.notificationTemplateService.upsertTemplate(userId, data.value);
+    return { value: template.template };
+  }
+
+  // Public Inventory Form endpoints (no auth required)
+  @Get('public/inventory-form/config')
+  async getPublicInventoryFormConfig(@Query('key') key?: string) {
     try {
-      const setting = await this.settingsService.getSetting('incident_notification_message');
-      return { value: setting?.value || '' };
+      // Look up user by publicFormKey if key is provided
+      let userId: string | null = null;
+      if (key) {
+        const user = await this.prisma.user.findUnique({
+          where: { publicFormKey: key },
+          select: { id: true },
+        });
+        if (user) {
+          userId = user.id;
+        } else {
+          return { message: 'Invalid form key' };
+        }
+      }
+
+      if (!userId) {
+        return { message: 'Form key is required' };
+      }
+
+      const formConfig = await this.inventoryFormConfigService.findAll(userId);
+      const allCategories = await this.inventoryCategoriesService.findAll(userId);
+      const allInventory = await this.inventoryService.findAll(userId);
+      
+      // Get all team members (for public form, we need all team members across all users)
+      const allTeamMembers = await this.prisma.teamMember.findMany({
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+        },
+      });
+
+      // Filter to only visible categories
+      const visibleCategories = allCategories.filter(
+        (c) => c.isVisibleOnForm !== false,
+      );
+      const visibleCategoryIds = new Set(visibleCategories.map((c) => c.id));
+
+      // Group inventory items by category (only include items from visible categories)
+      const inventoryByCategory: Record<string, any[]> = {};
+      for (const item of allInventory) {
+        // Skip items from hidden categories
+        if (item.categoryId && !visibleCategoryIds.has(item.categoryId)) {
+          continue;
+        }
+
+        const category = visibleCategories.find(
+          (c) => c.id === item.categoryId,
+        );
+        const categoryName = category?.name || item.type || 'Other';
+        if (!inventoryByCategory[categoryName]) {
+          inventoryByCategory[categoryName] = [];
+        }
+        inventoryByCategory[categoryName].push(item);
+      }
+
+      // Get config for each field, using defaults if not configured
+      const configByField: Record<string, any> = {};
+      for (const config of formConfig) {
+        configByField[`${config.categoryName}:${config.fieldName}`] = config;
+      }
+
+      return {
+        categories: visibleCategories.map((c) => c.name),
+        inventoryByCategory,
+        formConfig: configByField,
+        teamMembers: allTeamMembers.map((m) => ({
+          id: m.id,
+          name: m.name,
+          type: m.type,
+        })),
+      };
     } catch (error) {
-      console.error('Error fetching notification message:', error);
+      console.error('Error fetching public form config:', error);
       throw error;
     }
   }
 
-  @Put('settings/notification-message')
-  async updateNotificationMessage(@Body() data: { value: string }) {
+  @Post('public/inventory-form/submit')
+  async submitPublicInventoryForm(@Body() body: any, @Query('key') key?: string) {
     try {
-      if (typeof data.value !== 'string') {
-        return { message: 'Invalid message value' };
+      const {
+        submitterName,
+        productSelections,
+        toolSelections,
+        additionalNotes,
+        returningEmptyGallons,
+      } = body;
+
+      if (!submitterName || !submitterName.trim()) {
+        return { message: 'Name is required' };
       }
-      const setting = await this.settingsService.upsertSetting('incident_notification_message', data.value);
-      return { value: setting.value };
+
+      // Look up user by publicFormKey if key is provided
+      let userId: string | null = null;
+      if (key) {
+        const user = await this.prisma.user.findUnique({
+          where: { publicFormKey: key },
+          select: { id: true },
+        });
+        if (user) {
+          userId = user.id;
+        } else {
+          return { message: 'Invalid form key' };
+        }
+      }
+
+      if (!userId) {
+        return { message: 'Form key is required' };
+      }
+
+      // Create submission
+      const submission = await this.inventoryFormSubmissionsService.create({
+        submitterName: submitterName.trim(),
+        productSelections: productSelections || {},
+        toolSelections: toolSelections || {},
+        additionalNotes: additionalNotes || null,
+        returningEmptyGallons: returningEmptyGallons || null,
+      }, userId);
+
+      // Update inventory totalRequested based on selections
+      const allInventory = await this.inventoryService.findAll(userId);
+
+      // Update product requests
+      if (productSelections && typeof productSelections === 'object') {
+        for (const [itemName, quantity] of Object.entries(productSelections)) {
+          if (typeof quantity === 'number' && quantity > 0) {
+            const item = allInventory.find((i) => i.name === itemName);
+            if (item) {
+              const newTotalInventory = Math.max(
+                0,
+                (item.totalInventory || 0) - quantity,
+              );
+              const newTotalRequested = (item.totalRequested || 0) + quantity;
+
+              await this.inventoryService.update(item.id, {
+                totalInventory: newTotalInventory,
+                totalRequested: newTotalRequested,
+              }, userId);
+            }
+          }
+        }
+      }
+
+      // Update tool requests
+      if (toolSelections && typeof toolSelections === 'object') {
+        for (const [itemName, quantity] of Object.entries(toolSelections)) {
+          if (typeof quantity === 'number' && quantity > 0) {
+            const item = allInventory.find((i) => i.name === itemName);
+            if (item) {
+              const newTotalRequested = (item.totalRequested || 0) + quantity;
+              await this.inventoryService.update(item.id, {
+                totalRequested: newTotalRequested,
+              }, userId);
+            }
+          }
+        }
+      }
+
+      return submission;
     } catch (error) {
-      console.error('Error updating notification message:', error);
+      console.error('Error submitting public form:', error);
       throw error;
     }
   }

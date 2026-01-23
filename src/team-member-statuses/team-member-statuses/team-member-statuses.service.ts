@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TeamMemberStatus, Prisma } from '@prisma/client';
 
@@ -61,6 +61,13 @@ export class TeamMemberStatusesService {
       this.logger.log(`Created team member status: ${status.id} by user: ${createdById}`);
       return status;
     } catch (error) {
+      // Handle unique constraint violation (duplicate name for same user)
+      if (error.code === 'P2002') {
+        const statusName = (data as any).name || 'unknown';
+        throw new ConflictException(
+          `A team member status with the name "${statusName}" already exists. Please choose a different name.`
+        );
+      }
       this.logger.error(`Error creating team member status: ${error.message}`, error.stack);
       throw error;
     }

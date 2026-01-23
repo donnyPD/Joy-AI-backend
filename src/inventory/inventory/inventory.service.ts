@@ -9,9 +9,10 @@ export class InventoryService {
   constructor(private prisma: PrismaService) {}
 
   // Ported from storage.ts: getAllInventory
-  async findAll(): Promise<Inventory[]> {
+  async findAll(userId: string): Promise<Inventory[]> {
     try {
       return this.prisma.inventory.findMany({
+        where: { userId },
         orderBy: { rowNumber: 'asc' },
       });
     } catch (error) {
@@ -21,10 +22,10 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: getInventoryByType
-  async findByType(type: string): Promise<Inventory[]> {
+  async findByType(type: string, userId: string): Promise<Inventory[]> {
     try {
       return this.prisma.inventory.findMany({
-        where: { type },
+        where: { type, userId },
         orderBy: { rowNumber: 'asc' },
       });
     } catch (error) {
@@ -34,10 +35,10 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: getInventoryByCategory
-  async findByCategory(categoryId: string): Promise<Inventory[]> {
+  async findByCategory(categoryId: string, userId: string): Promise<Inventory[]> {
     try {
       return this.prisma.inventory.findMany({
-        where: { categoryId },
+        where: { categoryId, userId },
         orderBy: { rowNumber: 'asc' },
       });
     } catch (error) {
@@ -47,10 +48,10 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: getInventoryItem
-  async findOne(id: string): Promise<Inventory | null> {
+  async findOne(id: string, userId: string): Promise<Inventory | null> {
     try {
-      return this.prisma.inventory.findUnique({
-        where: { id },
+      return this.prisma.inventory.findFirst({
+        where: { id, userId },
       });
     } catch (error) {
       this.logger.error(`Error fetching inventory item: ${error.message}`, error.stack);
@@ -59,10 +60,10 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: getInventoryByName
-  async findByName(name: string): Promise<Inventory | null> {
+  async findByName(name: string, userId: string): Promise<Inventory | null> {
     try {
       return this.prisma.inventory.findFirst({
-        where: { name },
+        where: { name, userId },
       });
     } catch (error) {
       this.logger.error(`Error fetching inventory by name: ${error.message}`, error.stack);
@@ -71,9 +72,9 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: findInventoryByFlexibleMatch
-  async findByFlexibleMatch(incomingName: string): Promise<Inventory | null> {
+  async findByFlexibleMatch(incomingName: string, userId: string): Promise<Inventory | null> {
     try {
-      const allItems = await this.findAll();
+      const allItems = await this.findAll(userId);
 
       const normalize = (str: string): string => {
         return str
@@ -151,28 +152,45 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: createInventoryItem
-  async create(data: Prisma.InventoryCreateInput): Promise<Inventory> {
+  async create(data: Prisma.InventoryCreateInput, userId: string): Promise<Inventory> {
     try {
+      if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+        this.logger.error(`Invalid userId provided: ${userId}`);
+        throw new Error('Valid userId is required to create inventory item');
+      }
+      // Extract user field if present to avoid conflicts, then set it properly
+      const { user, ...dataWithoutUser } = data as any;
       const item = await this.prisma.inventory.create({
-        data,
+        data: {
+          ...dataWithoutUser,
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+        },
       });
-      this.logger.log(`Created inventory item: ${item.id}`);
+      this.logger.log(`Created inventory item ${item.id} for user ${userId}`);
       return item;
     } catch (error) {
-      this.logger.error(`Error creating inventory item: ${error.message}`, error.stack);
+      this.logger.error(`Error creating inventory item for user ${userId}: ${error.message}`, error.stack);
       throw error;
     }
   }
 
   // Ported from storage.ts: createInventoryItems
-  async createMany(data: Prisma.InventoryCreateInput[]): Promise<Inventory[]> {
+  async createMany(data: Prisma.InventoryCreateInput[], userId: string): Promise<Inventory[]> {
     try {
       if (data.length === 0) {
         return [];
       }
       // Prisma doesn't support createMany with returning, so we use Promise.all
       const items = await Promise.all(
-        data.map((item) => this.prisma.inventory.create({ data: item }))
+        data.map((item) => {
+          const { user, ...itemWithoutUser } = item as any;
+          return this.prisma.inventory.create({ 
+            data: {
+              ...itemWithoutUser,
+              user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+            },
+          });
+        })
       );
       this.logger.log(`Created ${items.length} inventory items`);
       return items;
@@ -183,8 +201,14 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: updateInventoryItem
-  async update(id: string, data: Prisma.InventoryUpdateInput): Promise<Inventory> {
+  async update(id: string, data: Prisma.InventoryUpdateInput, userId: string): Promise<Inventory> {
     try {
+      // First verify the item belongs to the user
+      const existing = await this.findOne(id, userId);
+      if (!existing) {
+        throw new NotFoundException(`Inventory item with ID ${id} not found`);
+      }
+
       const item = await this.prisma.inventory.update({
         where: { id },
         data,
@@ -192,6 +216,9 @@ export class InventoryService {
       this.logger.log(`Updated inventory item: ${id}`);
       return item;
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory item with ID ${id} not found`);
       }
@@ -201,13 +228,22 @@ export class InventoryService {
   }
 
   // Ported from storage.ts: deleteInventoryItem
-  async delete(id: string): Promise<void> {
+  async delete(id: string, userId: string): Promise<void> {
     try {
+      // First verify the item belongs to the user
+      const existing = await this.findOne(id, userId);
+      if (!existing) {
+        throw new NotFoundException(`Inventory item with ID ${id} not found`);
+      }
+
       await this.prisma.inventory.delete({
         where: { id },
       });
       this.logger.log(`Deleted inventory item: ${id}`);
     } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
       if (error.code === 'P2025') {
         throw new NotFoundException(`Inventory item with ID ${id} not found`);
       }
