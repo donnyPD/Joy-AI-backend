@@ -25,6 +25,7 @@ model User {
   teamMemberTypes     TeamMemberType[]
   teamMemberStatuses  TeamMemberStatus[]
   customMetricDefinitions CustomMetricDefinition[]
+  notificationTemplates NotificationTemplate[]
 
   @@index([email])
   @@index([jobberAccountId])
@@ -589,13 +590,16 @@ model TeamMemberStatus {
   @@map("team_member_statuses")
 }
 
-model Setting {
-  id        String   @id @default(uuid())
-  key       String   @unique
-  value     String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+model NotificationTemplate {
+  id          String   @id @default(uuid())
+  createdById String   @map("created_by_id")
+  template    String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([key])
-  @@map("settings")
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([createdById])
+  @@index([createdById])
+  @@map("notification_templates")
 }
