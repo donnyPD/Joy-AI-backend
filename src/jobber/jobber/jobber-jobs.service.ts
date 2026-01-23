@@ -90,9 +90,51 @@ export class JobberJobsService {
               number
               primary
             }
+            billingAddress {
+              street
+              street2
+              city
+              province
+              postalCode
+              country
+            }
+            customFields {
+              ... on CustomFieldText {
+                id
+                label
+                valueText
+              }
+              ... on CustomFieldNumeric {
+                id
+                label
+                valueNumeric
+              }
+              ... on CustomFieldDropdown {
+                id
+                label
+                valueDropdown
+              }
+              ... on CustomFieldArea {
+                id
+                label
+                valueArea {
+                  length
+                  width
+                }
+              }
+              ... on CustomFieldLink {
+                id
+                label
+                valueLink {
+                  text
+                  url
+                }
+              }
+            }
           }
           property {
             id
+            name
             address {
               street
               street2

@@ -16,6 +16,11 @@ import { CustomMetricDefinitionsModule } from '../custom-metric-definitions/cust
 import { TeamMemberTypesModule } from '../team-member-types/team-member-types/team-member-types.module';
 import { TeamMemberStatusesModule } from '../team-member-statuses/team-member-statuses/team-member-statuses.module';
 import { SettingsModule } from '../settings/settings/settings.module';
+import { InvoicesModule } from '../invoices/invoices.module';
+import { QuotesModule } from '../quotes/quotes.module';
+import { JobsModule } from '../jobs/jobs.module';
+import { VisitsModule } from '../visits/visits.module';
+import { TimesheetsModule } from '../timesheets/timesheets.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -36,6 +41,11 @@ import { AuthModule } from '../auth/auth.module';
     TeamMemberTypesModule,
     TeamMemberStatusesModule,
     SettingsModule,
+    InvoicesModule,
+    QuotesModule,
+    JobsModule,
+    VisitsModule,
+    TimesheetsModule,
     AuthModule,
   ],
   controllers: [ApiController],
