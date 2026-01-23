@@ -18,8 +18,13 @@ model User {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  stripeCustomerId     String?   @unique
-  stripeSubscriptions  StripeSubscription[]
+  stripeCustomerId    String?              @unique
+  stripeSubscriptions StripeSubscription[]
+  teamMembers         TeamMember[]
+  kpiEntries          KpiEntry[]
+  teamMemberTypes     TeamMemberType[]
+  teamMemberStatuses  TeamMemberStatus[]
+  customMetricDefinitions CustomMetricDefinition[]
 
   @@index([email])
   @@index([jobberAccountId])
@@ -43,15 +48,15 @@ model StripePlan {
 }
 
 model StripeSubscription {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   userId               String
   planKey              String
-  stripeSubscriptionId String   @unique
+  stripeSubscriptionId String    @unique
   status               String
   currentPeriodEnd     DateTime?
-  cancelAtPeriodEnd    Boolean  @default(false)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  cancelAtPeriodEnd    Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -364,13 +369,16 @@ model TeamMember {
   npsAverage            Int      @default(0) @map("nps_average")
   googleReviewsObtained Int      @default(0) @map("google_reviews_obtained")
   starOfMonth           Boolean  @default(false) @map("star_of_month")
+  createdById           String   @map("created_by_id")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   // Relations
+  createdBy      User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
   kpiEntries     KpiEntry[]
   inventoryNotes InventoryNote[]
 
+  @@index([createdById])
   @@map("team_members")
 }
 
@@ -381,10 +389,14 @@ model KpiEntry {
   date         String
   description  String
   cost         String?
+  createdById  String   @map("created_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
   teamMember TeamMember @relation(fields: [teamMemberId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
+  @@index([createdById])
+  @@index([teamMemberId])
   @@map("kpi_entries")
 }
 
@@ -534,32 +546,46 @@ model CustomMetricDefinition {
   description String?
   icon        String?
   color       String?
-  fields      Json     // Array of { id, name, type, required }
+  fields      Json // Array of { id, name, type, required }
   isActive    Boolean  @default(true) @map("is_active")
-  threshold   Int?     // Threshold count to trigger alerts
+  threshold   Int? // Threshold count to trigger alerts
+  createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
   @@map("custom_metric_definitions")
 }
 
 model TeamMemberType {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([name, createdById])
+  @@index([createdById])
   @@map("team_member_types")
 }
 
 model TeamMemberStatus {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  createdBy User @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([name, createdById])
+  @@index([createdById])
   @@map("team_member_statuses")
 }
 

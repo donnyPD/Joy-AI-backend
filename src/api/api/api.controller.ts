@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
 import { KpiEntriesService } from '../../kpi-entries/kpi-entries/kpi-entries.service';
@@ -68,10 +69,15 @@ export class ApiController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('team-members')
-  async getTeamMembers() {
+  async getTeamMembers(@Request() req: any) {
     try {
-      const members = await this.teamMembersService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const members = await this.teamMembersService.findAll(userId);
       return members;
     } catch (error) {
       console.error('Error fetching team members:', error);
@@ -79,10 +85,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('team-members/:id')
-  async getTeamMember(@Param('id') id: string) {
+  async getTeamMember(@Param('id') id: string, @Request() req: any) {
     try {
-      const member = await this.teamMembersService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const member = await this.teamMembersService.findOne(id, userId);
       if (!member) {
         return { error: 'Team member not found' };
       }
@@ -93,10 +104,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('team-members')
-  async createTeamMember(@Body() data: any) {
+  async createTeamMember(@Body() data: any, @Request() req: any) {
     try {
-      const member = await this.teamMembersService.create(data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const member = await this.teamMembersService.create(data, userId);
       return member;
     } catch (error) {
       console.error('Error creating team member:', error);
@@ -104,10 +120,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('team-members/:id')
-  async updateTeamMember(@Param('id') id: string, @Body() data: any) {
+  async updateTeamMember(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const member = await this.teamMembersService.update(id, data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const member = await this.teamMembersService.update(id, data, userId);
       return member;
     } catch (error) {
       console.error('Error updating team member:', error);
@@ -115,11 +136,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('team-members/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteTeamMember(@Param('id') id: string) {
+  async deleteTeamMember(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.teamMembersService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.teamMembersService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting team member:', error);
@@ -128,10 +154,17 @@ export class ApiController {
   }
 
   // KPI Entries endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('kpi-entries/:teamMemberId')
-  async getKpiEntries(@Param('teamMemberId') teamMemberId: string) {
+  async getKpiEntries(@Param('teamMemberId') teamMemberId: string, @Request() req: any) {
     try {
-      const entries = await this.kpiEntriesService.findAllByTeamMember(teamMemberId);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      console.log(`[getKpiEntries] User ID: ${userId}, Team Member ID: ${teamMemberId}`);
+      const entries = await this.kpiEntriesService.findAllByTeamMember(teamMemberId, userId);
+      console.log(`[getKpiEntries] Found ${entries.length} entries for user ${userId}`);
       return entries;
     } catch (error) {
       console.error('Error fetching KPI entries:', error);
@@ -139,10 +172,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('kpi-entries')
-  async createKpiEntry(@Body() data: any) {
+  async createKpiEntry(@Body() data: any, @Request() req: any) {
     try {
-      const entry = await this.kpiEntriesService.create(data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const entry = await this.kpiEntriesService.create(data, userId);
       return entry;
     } catch (error) {
       console.error('Error creating KPI entry:', error);
@@ -150,10 +188,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Put('kpi-entries/:id')
-  async updateKpiEntry(@Param('id') id: string, @Body() data: any) {
+  async updateKpiEntry(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const entry = await this.kpiEntriesService.update(id, data);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const entry = await this.kpiEntriesService.update(id, data, userId);
       return entry;
     } catch (error) {
       console.error('Error updating KPI entry:', error);
@@ -161,11 +204,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('kpi-entries/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteKpiEntry(@Param('id') id: string) {
+  async deleteKpiEntry(@Param('id') id: string, @Request() req: any) {
     try {
-      await this.kpiEntriesService.delete(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.kpiEntriesService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting KPI entry:', error);
@@ -174,14 +222,19 @@ export class ApiController {
   }
 
   // Team Metrics Summary endpoint
+  @UseGuards(JwtAuthGuard)
   @Get('team-metrics-summary')
-  async getTeamMetricsSummary(@Query('month') month?: string) {
+  async getTeamMetricsSummary(@Request() req: any, @Query('month') month?: string) {
     try {
-      // Get all team members
-      const allTeamMembers = await this.teamMembersService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      // Get all team members for this user
+      const allTeamMembers = await this.teamMembersService.findAll(userId);
 
-      // Get all KPI entries
-      const allKpiEntries = await this.kpiEntriesService.findAll();
+      // Get all KPI entries for this user
+      const allKpiEntries = await this.kpiEntriesService.findAll(userId);
 
       // Filter entries by month if provided
       let filteredEntries = allKpiEntries;
@@ -270,10 +323,15 @@ export class ApiController {
   }
 
   // Custom Metric Definitions endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('custom-metric-definitions')
-  async getCustomMetricDefinitions() {
+  async getCustomMetricDefinitions(@Request() req: any) {
     try {
-      const metrics = await this.customMetricDefinitionsService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const metrics = await this.customMetricDefinitionsService.findAll(userId);
       return metrics;
     } catch (error) {
       console.error('Error fetching custom metric definitions:', error);
@@ -281,10 +339,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('custom-metric-definitions/:id')
-  async getCustomMetricDefinition(@Param('id') id: string) {
+  async getCustomMetricDefinition(@Param('id') id: string, @Request() req: any) {
     try {
-      const metric = await this.customMetricDefinitionsService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const metric = await this.customMetricDefinitionsService.findOne(id, userId);
       if (!metric) {
         return { message: 'Custom metric definition not found' };
       }
@@ -295,8 +358,9 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('custom-metric-definitions')
-  async createCustomMetricDefinition(@Body() data: any) {
+  async createCustomMetricDefinition(@Body() data: any, @Request() req: any) {
     try {
       // Validation
       if (!data.name || !data.name.trim()) {
@@ -330,6 +394,11 @@ export class ApiController {
         thresholdValue = Math.floor(thresholdNum);
       }
 
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
       const metric = await this.customMetricDefinitionsService.create({
         name: data.name.trim(),
         description: data.description || null,
@@ -338,7 +407,7 @@ export class ApiController {
         fields: data.fields,
         isActive: data.isActive !== undefined ? data.isActive : true,
         threshold: thresholdValue,
-      });
+      } as any, userId);
 
       return metric;
     } catch (error) {
@@ -347,11 +416,16 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('custom-metric-definitions/:id')
-  async updateCustomMetricDefinition(@Param('id') id: string, @Body() data: any) {
+  async updateCustomMetricDefinition(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      // Check if metric exists
-      const existing = await this.customMetricDefinitionsService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      // Check if metric exists and belongs to user
+      const existing = await this.customMetricDefinitionsService.findOne(id, userId);
       if (!existing) {
         return { message: 'Custom metric definition not found' };
       }
@@ -414,7 +488,7 @@ export class ApiController {
         }
       }
 
-      const metric = await this.customMetricDefinitionsService.update(id, updateData);
+      const metric = await this.customMetricDefinitionsService.update(id, updateData, userId);
       return metric;
     } catch (error) {
       console.error('Error updating custom metric definition:', error);
@@ -422,16 +496,21 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('custom-metric-definitions/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteCustomMetricDefinition(@Param('id') id: string) {
+  async deleteCustomMetricDefinition(@Param('id') id: string, @Request() req: any) {
     try {
-      const metric = await this.customMetricDefinitionsService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const metric = await this.customMetricDefinitionsService.findOne(id, userId);
       if (!metric) {
         return { message: 'Custom metric definition not found' };
       }
 
-      await this.customMetricDefinitionsService.delete(id);
+      await this.customMetricDefinitionsService.delete(id, userId);
       return { success: true };
     } catch (error) {
       console.error('Error deleting custom metric definition:', error);
@@ -1045,10 +1124,15 @@ export class ApiController {
   }
 
   // Team Member Types endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('team-member-types')
-  async getTeamMemberTypes() {
+  async getTeamMemberTypes(@Request() req: any) {
     try {
-      const types = await this.teamMemberTypesService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const types = await this.teamMemberTypesService.findAll(userId);
       return types;
     } catch (error) {
       console.error('Error fetching team member types:', error);
@@ -1056,9 +1140,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('team-member-types')
-  async createTeamMemberType(@Body() data: any) {
+  async createTeamMemberType(@Body() data: any, @Request() req: any) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       if (!data.name || !data.name.trim()) {
         return { message: 'Type name is required' };
       }
@@ -1066,7 +1155,7 @@ export class ApiController {
       const type = await this.teamMemberTypesService.create({
         name: data.name.trim(),
         isActive: data.isActive !== undefined ? data.isActive : true,
-      });
+      } as any, userId);
 
       return type;
     } catch (error) {
@@ -1075,10 +1164,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('team-member-types/:id')
-  async updateTeamMemberType(@Param('id') id: string, @Body() data: any) {
+  async updateTeamMemberType(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const existing = await this.teamMemberTypesService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const existing = await this.teamMemberTypesService.findOne(id, userId);
       if (!existing) {
         return { message: 'Team member type not found' };
       }
@@ -1094,7 +1188,7 @@ export class ApiController {
         updateData.isActive = data.isActive;
       }
 
-      const type = await this.teamMemberTypesService.update(id, updateData);
+      const type = await this.teamMemberTypesService.update(id, updateData, userId);
       return type;
     } catch (error) {
       // Re-throw BadRequestException to let NestJS handle the status code
@@ -1106,15 +1200,20 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('team-member-types/:id')
-  async deleteTeamMemberType(@Param('id') id: string) {
+  async deleteTeamMemberType(@Param('id') id: string, @Request() req: any) {
     try {
-      const type = await this.teamMemberTypesService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const type = await this.teamMemberTypesService.findOne(id, userId);
       if (!type) {
         return { message: 'Team member type not found' };
       }
 
-      await this.teamMemberTypesService.delete(id);
+      await this.teamMemberTypesService.delete(id, userId);
       return { success: true };
     } catch (error) {
       // Re-throw BadRequestException to let NestJS handle the status code
@@ -1127,10 +1226,15 @@ export class ApiController {
   }
 
   // Team Member Statuses endpoints
+  @UseGuards(JwtAuthGuard)
   @Get('team-member-statuses')
-  async getTeamMemberStatuses() {
+  async getTeamMemberStatuses(@Request() req: any) {
     try {
-      const statuses = await this.teamMemberStatusesService.findAll();
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const statuses = await this.teamMemberStatusesService.findAll(userId);
       return statuses;
     } catch (error) {
       console.error('Error fetching team member statuses:', error);
@@ -1138,9 +1242,14 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('team-member-statuses')
-  async createTeamMemberStatus(@Body() data: any) {
+  async createTeamMemberStatus(@Body() data: any, @Request() req: any) {
     try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
       if (!data.name || !data.name.trim()) {
         return { message: 'Status name is required' };
       }
@@ -1148,7 +1257,7 @@ export class ApiController {
       const status = await this.teamMemberStatusesService.create({
         name: data.name.trim(),
         isActive: data.isActive !== undefined ? data.isActive : true,
-      });
+      } as any, userId);
 
       return status;
     } catch (error) {
@@ -1157,10 +1266,15 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch('team-member-statuses/:id')
-  async updateTeamMemberStatus(@Param('id') id: string, @Body() data: any) {
+  async updateTeamMemberStatus(@Param('id') id: string, @Body() data: any, @Request() req: any) {
     try {
-      const existing = await this.teamMemberStatusesService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const existing = await this.teamMemberStatusesService.findOne(id, userId);
       if (!existing) {
         return { message: 'Team member status not found' };
       }
@@ -1176,7 +1290,7 @@ export class ApiController {
         updateData.isActive = data.isActive;
       }
 
-      const status = await this.teamMemberStatusesService.update(id, updateData);
+      const status = await this.teamMemberStatusesService.update(id, updateData, userId);
       return status;
     } catch (error) {
       // Re-throw BadRequestException to let NestJS handle the status code
@@ -1188,15 +1302,20 @@ export class ApiController {
     }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete('team-member-statuses/:id')
-  async deleteTeamMemberStatus(@Param('id') id: string) {
+  async deleteTeamMemberStatus(@Param('id') id: string, @Request() req: any) {
     try {
-      const status = await this.teamMemberStatusesService.findOne(id);
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const status = await this.teamMemberStatusesService.findOne(id, userId);
       if (!status) {
         return { message: 'Team member status not found' };
       }
 
-      await this.teamMemberStatusesService.delete(id);
+      await this.teamMemberStatusesService.delete(id, userId);
       return { success: true };
     } catch (error) {
       // Re-throw BadRequestException to let NestJS handle the status code

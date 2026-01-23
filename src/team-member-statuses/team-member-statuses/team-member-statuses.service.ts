@@ -8,9 +8,10 @@ export class TeamMemberStatusesService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAll(): Promise<TeamMemberStatus[]> {
+  async findAll(createdById: string): Promise<TeamMemberStatus[]> {
     try {
       return this.prisma.teamMemberStatus.findMany({
+        where: { createdById },
         orderBy: { name: 'asc' },
       });
     } catch (error) {
@@ -19,10 +20,13 @@ export class TeamMemberStatusesService {
     }
   }
 
-  async findOne(id: string): Promise<TeamMemberStatus | null> {
+  async findOne(id: string, createdById: string): Promise<TeamMemberStatus | null> {
     try {
-      return this.prisma.teamMemberStatus.findUnique({
-        where: { id },
+      return this.prisma.teamMemberStatus.findFirst({
+        where: { 
+          id,
+          createdById,
+        },
       });
     } catch (error) {
       this.logger.error(`Error fetching team member status ${id}: ${error.message}`, error.stack);
@@ -30,10 +34,13 @@ export class TeamMemberStatusesService {
     }
   }
 
-  async checkUsage(name: string): Promise<number> {
+  async checkUsage(name: string, createdById: string): Promise<number> {
     try {
       return await this.prisma.teamMember.count({
-        where: { status: name },
+        where: { 
+          status: name,
+          createdById,
+        },
       });
     } catch (error) {
       this.logger.error(`Error checking usage for status ${name}: ${error.message}`, error.stack);
@@ -41,12 +48,17 @@ export class TeamMemberStatusesService {
     }
   }
 
-  async create(data: Prisma.TeamMemberStatusCreateInput): Promise<TeamMemberStatus> {
+  async create(data: Prisma.TeamMemberStatusCreateInput, createdById: string): Promise<TeamMemberStatus> {
     try {
+      // Exclude createdBy relation and use createdById directly
+      const { createdBy, ...dataWithoutRelation } = data as any;
       const status = await this.prisma.teamMemberStatus.create({
-        data,
+        data: {
+          ...dataWithoutRelation,
+          createdById,
+        } as Prisma.TeamMemberStatusUncheckedCreateInput,
       });
-      this.logger.log(`Created team member status: ${status.id}`);
+      this.logger.log(`Created team member status: ${status.id} by user: ${createdById}`);
       return status;
     } catch (error) {
       this.logger.error(`Error creating team member status: ${error.message}`, error.stack);
@@ -54,9 +66,9 @@ export class TeamMemberStatusesService {
     }
   }
 
-  async update(id: string, data: Prisma.TeamMemberStatusUpdateInput): Promise<TeamMemberStatus> {
+  async update(id: string, data: Prisma.TeamMemberStatusUpdateInput, createdById: string): Promise<TeamMemberStatus> {
     try {
-      const existing = await this.findOne(id);
+      const existing = await this.findOne(id, createdById);
       if (!existing) {
         throw new NotFoundException(`Team member status with ID ${id} not found`);
       }
@@ -65,9 +77,9 @@ export class TeamMemberStatusesService {
       const newName = typeof data.name === 'string' ? data.name : undefined;
       const isDeactivating = data.isActive === false && existing.isActive === true;
 
-      // Check if deactivating and in use
+      // Check if deactivating and in use (only check user's own team members)
       if (isDeactivating) {
-        const count = await this.checkUsage(oldName);
+        const count = await this.checkUsage(oldName, createdById);
         if (count > 0) {
           throw new BadRequestException(
             `Cannot deactivate this status because it is currently used by ${count} team member(s)`,
@@ -81,13 +93,16 @@ export class TeamMemberStatusesService {
         data,
       });
 
-      // If name changed, update all team members
+      // If name changed, update all team members (only user's own team members)
       if (newName && newName !== oldName) {
         await this.prisma.teamMember.updateMany({
-          where: { status: oldName },
+          where: { 
+            status: oldName,
+            createdById,
+          },
           data: { status: newName },
         });
-        this.logger.log(`Updated ${await this.checkUsage(newName)} team member(s) to use new status name: ${newName}`);
+        this.logger.log(`Updated ${await this.checkUsage(newName, createdById)} team member(s) to use new status name: ${newName}`);
       }
 
       this.logger.log(`Updated team member status: ${id}`);
@@ -104,15 +119,15 @@ export class TeamMemberStatusesService {
     }
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, createdById: string): Promise<void> {
     try {
-      const existing = await this.findOne(id);
+      const existing = await this.findOne(id, createdById);
       if (!existing) {
         throw new NotFoundException(`Team member status with ID ${id} not found`);
       }
 
-      // Check if any team members use this status
-      const count = await this.checkUsage(existing.name);
+      // Check if any team members use this status (only check user's own team members)
+      const count = await this.checkUsage(existing.name, createdById);
       if (count > 0) {
         throw new BadRequestException(
           `Cannot delete this status because it is currently used by ${count} team member(s)`,
