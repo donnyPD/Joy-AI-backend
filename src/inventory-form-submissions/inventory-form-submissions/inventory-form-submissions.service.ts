@@ -9,9 +9,10 @@ export class InventoryFormSubmissionsService {
   constructor(private prisma: PrismaService) {}
 
   // Get all submissions - ported from storage.ts
-  async findAll(): Promise<InventoryFormSubmission[]> {
+  async findAll(userId: string): Promise<InventoryFormSubmission[]> {
     try {
       return this.prisma.inventoryFormSubmission.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
@@ -21,9 +22,10 @@ export class InventoryFormSubmissionsService {
   }
 
   // Get submissions by month/year - ported from storage.ts
-  async findByMonth(month: number, year: number): Promise<InventoryFormSubmission[]> {
+  async findByMonth(month: number, year: number, userId: string): Promise<InventoryFormSubmission[]> {
     try {
       const allSubmissions = await this.prisma.inventoryFormSubmission.findMany({
+        where: { userId },
         orderBy: { createdAt: 'desc' },
       });
 
@@ -42,10 +44,10 @@ export class InventoryFormSubmissionsService {
   }
 
   // Get single submission - ported from storage.ts
-  async findOne(id: string): Promise<InventoryFormSubmission | null> {
+  async findOne(id: string, userId: string): Promise<InventoryFormSubmission | null> {
     try {
-      return this.prisma.inventoryFormSubmission.findUnique({
-        where: { id },
+      return this.prisma.inventoryFormSubmission.findFirst({
+        where: { id, userId },
       });
     } catch (error) {
       this.logger.error(`Error fetching form submission: ${error.message}`, error.stack);
@@ -54,10 +56,14 @@ export class InventoryFormSubmissionsService {
   }
 
   // Create submission - ported from storage.ts
-  async create(data: Prisma.InventoryFormSubmissionCreateInput): Promise<InventoryFormSubmission> {
+  async create(data: Prisma.InventoryFormSubmissionCreateInput, userId: string): Promise<InventoryFormSubmission> {
     try {
+      const { user, ...dataWithoutUser } = data as any;
       return this.prisma.inventoryFormSubmission.create({
-        data,
+        data: {
+          ...dataWithoutUser,
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+        },
       });
     } catch (error) {
       this.logger.error(`Error creating form submission: ${error.message}`, error.stack);

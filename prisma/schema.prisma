@@ -15,19 +15,32 @@ model User {
   jobberRefreshToken   String? // Jobber OAuth refresh token
   jobberTokenExpiresAt DateTime? // Token expiration time
   jobberAccountId      String? // Jobber account ID
+  publicFormKey        String?  @unique @map("public_form_key")
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  stripeCustomerId    String?              @unique
-  stripeSubscriptions StripeSubscription[]
-  teamMembers         TeamMember[]
-  kpiEntries          KpiEntry[]
-  teamMemberTypes     TeamMemberType[]
-  teamMemberStatuses  TeamMemberStatus[]
-  customMetricDefinitions CustomMetricDefinition[]
+  stripeCustomerId           String?                     @unique
+  stripeSubscriptions        StripeSubscription[]
+  teamMembers                TeamMember[]
+  kpiEntries                 KpiEntry[]
+  teamMemberTypes            TeamMemberType[]
+  teamMemberStatuses         TeamMemberStatus[]
+  customMetricDefinitions    CustomMetricDefinition[]
+  inventoryColumnDefinitions InventoryColumnDefinition[]
+  inventory                  Inventory[]
+  inventoryCategories        InventoryCategory[]
+  inventoryStores            InventoryStore[]
+  inventoryPurchases         InventoryPurchase[]
+  inventoryNotes             InventoryNote[]
+  inventoryFormConfigs       InventoryFormConfig[]
+  inventoryFormSubmissions   InventoryFormSubmission[]
+  inventorySnapshots          InventorySnapshot[]
+  inventoryTechnicians       InventoryTechnician[]
+  inventoryTechnicianPurchases InventoryTechnicianPurchase[]
 
   @@index([email])
   @@index([jobberAccountId])
+  @@index([publicFormKey])
   @@map("users")
 }
 
@@ -402,30 +415,39 @@ model KpiEntry {
 
 model InventoryNote {
   id           String   @id @default(uuid())
+  userId       String?  @map("user_id")
   noteText     String   @map("note_text")
   nyTimestamp  String   @map("ny_timestamp")
   noteType     String   @default("general") @map("note_type")
   teamMemberId String?  @map("team_member_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  teamMember TeamMember? @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
+  user       User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMember TeamMember?  @relation(fields: [teamMemberId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
+  @@index([teamMemberId])
   @@map("inventory_notes")
 }
 
 model InventoryCategory {
   id              String   @id @default(uuid())
-  name            String   @unique
+  userId          String?  @map("user_id")
+  name            String
   isVisibleOnForm Boolean  @default(true) @map("is_visible_on_form")
   createdAt       DateTime @default(now()) @map("created_at")
 
+  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   inventory Inventory[]
 
+  @@unique([userId, name])
+  @@index([userId])
   @@map("inventory_categories")
 }
 
 model Inventory {
   id                  String   @id @default(uuid())
+  userId              String?  @map("user_id")
   name                String
   type                String
   categoryId          String?  @map("category_id")
@@ -437,12 +459,15 @@ model Inventory {
   threshold           Int      @default(3)
   rowNumber           Int?     @map("row_number")
   preferredStore      String?  @map("preferred_store")
+  dynamicFields       Json?    @map("dynamic_fields")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  category  InventoryCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  user      User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  InventoryCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   purchases InventoryPurchase[]
 
+  @@index([userId])
   @@index([categoryId])
   @@index([type])
   @@map("inventory")
@@ -450,18 +475,23 @@ model Inventory {
 
 model InventoryTechnician {
   id                 String   @id @default(uuid())
-  techName           String   @unique @map("tech_name")
+  userId             String?  @map("user_id")
+  techName           String   @map("tech_name")
   latestPurchaseDate String?  @map("latest_purchase_date")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
+  user      User?                       @relation(fields: [userId], references: [id], onDelete: Cascade)
   purchases InventoryTechnicianPurchase[]
 
+  @@unique([userId, techName])
+  @@index([userId])
   @@map("inventory_technicians")
 }
 
 model InventoryTechnicianPurchase {
   id           String   @id @default(uuid())
+  userId       String?  @map("user_id")
   technicianId String   @map("technician_id")
   purchaseDate String   @map("purchase_date")
   itemsRaw     String   @map("items_raw")
@@ -469,33 +499,45 @@ model InventoryTechnicianPurchase {
   isCompleted  Boolean  @default(false) @map("is_completed")
   createdAt    DateTime @default(now()) @map("created_at")
 
+  user       User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
   technician InventoryTechnician @relation(fields: [technicianId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
   @@index([technicianId])
   @@map("inventory_technician_purchases")
 }
 
 model InventorySnapshot {
   id           String   @id @default(uuid())
+  userId       String?  @map("user_id")
   month        Int
   year         Int
   snapshotData Json     @map("snapshot_data")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  @@unique([month, year])
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year])
+  @@index([userId])
   @@map("inventory_snapshots")
 }
 
 model InventoryStore {
   id        String   @id @default(uuid())
-  name      String   @unique
+  userId    String?  @map("user_id")
+  name      String
   createdAt DateTime @default(now()) @map("created_at")
 
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId])
   @@map("inventory_stores")
 }
 
 model InventoryFormConfig {
   id            String   @id @default(uuid())
+  userId        String?  @map("user_id")
   fieldName     String   @map("field_name")
   fieldType     String   @map("field_type")
   categoryName  String   @map("category_name")
@@ -508,11 +550,15 @@ model InventoryFormConfig {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@map("inventory_form_config")
 }
 
 model InventoryFormSubmission {
   id                    String   @id @default(uuid())
+  userId                String?  @map("user_id")
   submitterName         String   @map("submitter_name")
   productSelections     Json     @map("product_selections")
   toolSelections        Json     @map("tool_selections")
@@ -520,11 +566,32 @@ model InventoryFormSubmission {
   returningEmptyGallons String?  @map("returning_empty_gallons")
   createdAt             DateTime @default(now()) @map("created_at")
 
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@map("inventory_form_submissions")
+}
+
+model InventoryColumnDefinition {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  columnKey    String   @map("column_key")
+  columnLabel  String   @map("column_label")
+  displayOrder Int      @default(0) @map("display_order")
+  isVisible    Boolean  @default(true) @map("is_visible")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, columnKey])
+  @@index([userId])
+  @@map("inventory_column_definitions")
 }
 
 model InventoryPurchase {
   id          String   @id @default(uuid())
+  userId      String?  @map("user_id")
   orderId     String   @map("order_id")
   itemId      String?  @map("item_id")
   itemName    String   @map("item_name")
@@ -534,8 +601,10 @@ model InventoryPurchase {
   purchasedAt String   @map("purchased_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  item Inventory? @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  user User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item Inventory?  @relation(fields: [itemId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@index([itemId])
   @@map("inventory_purchases")
 }

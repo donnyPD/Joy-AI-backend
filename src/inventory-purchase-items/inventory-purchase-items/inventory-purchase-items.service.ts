@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryPurchase, Prisma } from '@prisma/client';
 
@@ -9,9 +9,10 @@ export class InventoryPurchaseItemsService {
   constructor(private prisma: PrismaService) {}
 
   // Get purchases by month/year - ported from storage.ts
-  async findByMonth(month: number, year: number): Promise<InventoryPurchase[]> {
+  async findByMonth(month: number, year: number, userId: string): Promise<InventoryPurchase[]> {
     try {
       const allPurchases = await this.prisma.inventoryPurchase.findMany({
+        where: { userId } as any,
         orderBy: { createdAt: 'desc' },
       });
 
@@ -30,17 +31,21 @@ export class InventoryPurchaseItemsService {
   }
 
   // Create single purchase - ported from storage.ts
-  async create(data: Prisma.InventoryPurchaseCreateInput): Promise<InventoryPurchase> {
+  async create(data: Prisma.InventoryPurchaseCreateInput, userId: string): Promise<InventoryPurchase> {
     try {
+      const { user, ...dataWithoutUser } = data as any;
       const purchase = await this.prisma.inventoryPurchase.create({
-        data,
+        data: {
+          ...dataWithoutUser,
+          user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
+        },
       });
 
       // Update inventory item's idealTotalInventory if itemId and quantity provided
       if (data.item?.connect?.id && typeof data.quantity === 'number') {
         const itemId = data.item.connect.id;
-        const item = await this.prisma.inventory.findUnique({
-          where: { id: itemId },
+        const item = await this.prisma.inventory.findFirst({
+          where: { id: itemId, userId } as any,
         });
 
         if (item) {
@@ -60,16 +65,85 @@ export class InventoryPurchaseItemsService {
   }
 
   // Create multiple purchases - ported from storage.ts
-  async createMany(purchases: Prisma.InventoryPurchaseCreateInput[]): Promise<InventoryPurchase[]> {
+  async createMany(purchases: Prisma.InventoryPurchaseCreateInput[], userId: string): Promise<InventoryPurchase[]> {
     try {
       const results: InventoryPurchase[] = [];
       for (const purchaseData of purchases) {
-        const result = await this.create(purchaseData);
+        const result = await this.create(purchaseData, userId);
         results.push(result);
       }
       return results;
     } catch (error) {
       this.logger.error(`Error creating multiple inventory purchases: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Update purchase - ported from storage.ts
+  async update(id: string, data: Prisma.InventoryPurchaseUpdateInput, userId: string): Promise<InventoryPurchase> {
+    try {
+      // First verify the purchase belongs to the user
+      const existing = await this.prisma.inventoryPurchase.findFirst({
+        where: { id, userId } as any,
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory purchase with ID ${id} not found`);
+      }
+
+      const purchase = await this.prisma.inventoryPurchase.update({
+        where: { id },
+        data,
+      });
+      this.logger.log(`Updated inventory purchase: ${id}`);
+      return purchase;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException(`Inventory purchase with ID ${id} not found`);
+      }
+      this.logger.error(`Error updating inventory purchase: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Delete purchase - ported from storage.ts
+  async delete(id: string, userId: string): Promise<void> {
+    try {
+      // First verify the purchase belongs to the user
+      const existing = await this.prisma.inventoryPurchase.findFirst({
+        where: { id, userId } as any,
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory purchase with ID ${id} not found`);
+      }
+
+      await this.prisma.inventoryPurchase.delete({
+        where: { id },
+      });
+      this.logger.log(`Deleted inventory purchase: ${id}`);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException(`Inventory purchase with ID ${id} not found`);
+      }
+      this.logger.error(`Error deleting inventory purchase: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Delete purchases by orderId - ported from storage.ts
+  async deleteByOrderId(orderId: string, userId: string): Promise<void> {
+    try {
+      await this.prisma.inventoryPurchase.deleteMany({
+        where: { orderId, userId } as any,
+      });
+      this.logger.log(`Deleted inventory purchases for order: ${orderId}`);
+    } catch (error) {
+      this.logger.error(`Error deleting inventory purchases by orderId: ${error.message}`, error.stack);
       throw error;
     }
   }
