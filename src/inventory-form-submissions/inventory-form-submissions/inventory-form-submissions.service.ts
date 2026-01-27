@@ -70,4 +70,98 @@ export class InventoryFormSubmissionsService {
       throw error;
     }
   }
+
+  // Update submission
+  async update(id: string, data: Prisma.InventoryFormSubmissionUpdateInput, userId: string): Promise<InventoryFormSubmission> {
+    try {
+      // First verify the submission belongs to the user
+      const existing = await this.prisma.inventoryFormSubmission.findFirst({
+        where: { id, userId },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory form submission with ID ${id} not found`);
+      }
+
+      const submission = await this.prisma.inventoryFormSubmission.update({
+        where: { id },
+        data,
+      });
+      this.logger.log(`Updated inventory form submission: ${id}`);
+      return submission;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException(`Inventory form submission with ID ${id} not found`);
+      }
+      this.logger.error(`Error updating form submission: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Delete submission
+  async delete(id: string, userId: string): Promise<void> {
+    try {
+      // First verify the submission belongs to the user
+      const existing = await this.prisma.inventoryFormSubmission.findFirst({
+        where: { id, userId },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory form submission with ID ${id} not found`);
+      }
+
+      await this.prisma.inventoryFormSubmission.delete({
+        where: { id },
+      });
+      this.logger.log(`Deleted inventory form submission: ${id}`);
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      if (error.code === 'P2025') {
+        throw new NotFoundException(`Inventory form submission with ID ${id} not found`);
+      }
+      this.logger.error(`Error deleting form submission: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  // Get available months from form submissions
+  async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
+    try {
+      const allSubmissions = await this.prisma.inventoryFormSubmission.findMany({
+        where: { userId },
+        select: {
+          createdAt: true,
+        },
+      });
+
+      const monthYearSet = new Set<string>();
+      for (const submission of allSubmissions) {
+        const submissionDate = new Date(submission.createdAt);
+        if (!isNaN(submissionDate.getTime())) {
+          const month = submissionDate.getMonth() + 1;
+          const year = submissionDate.getFullYear();
+          monthYearSet.add(`${month}-${year}`);
+        }
+      }
+
+      const months = Array.from(monthYearSet).map((key) => {
+        const [month, year] = key.split('-').map(Number);
+        return { month, year };
+      });
+
+      // Sort in descending order (newest first)
+      months.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      return months;
+    } catch (error) {
+      this.logger.error(`Error fetching available form submission months: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
 }

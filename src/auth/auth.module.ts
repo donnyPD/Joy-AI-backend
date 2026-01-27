@@ -10,6 +10,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { JobberOAuthService } from './jobber/jobber-oauth.service';
 import { JobberOAuthController } from './jobber/jobber-oauth.controller';
 import { JobberModule } from '../jobber/jobber.module';
+import { TeamMemberTypesModule } from '../team-member-types/team-member-types/team-member-types.module';
+import { TeamMemberStatusesModule } from '../team-member-statuses/team-member-statuses/team-member-statuses.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { JobberModule } from '../jobber/jobber.module';
       inject: [ConfigService],
     }),
     forwardRef(() => JobberModule),
+    TeamMemberTypesModule,
+    TeamMemberStatusesModule,
   ],
   controllers: [AuthController, JobberOAuthController],
   providers: [AuthService, JwtStrategy, JwtAuthGuard, JobberOAuthService],

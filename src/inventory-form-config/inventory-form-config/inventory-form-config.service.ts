@@ -39,8 +39,7 @@ export class InventoryFormConfigService {
     isVisible?: boolean;
     isRequired?: boolean;
     dropdownMin?: number;
-    dropdownMax?: number;
-    dropdownMaxW2?: number;
+    dropdownMaxByType?: Record<string, number>;
     displayOrder?: number;
   }, userId: string): Promise<InventoryFormConfig> {
     try {
@@ -52,7 +51,17 @@ export class InventoryFormConfigService {
         },
       });
 
+      // Default dropdownMaxByType if not provided
+      const defaultDropdownMaxByType = { '1099': 5, 'W2': 5 };
+      const dropdownMaxByType = data.dropdownMaxByType || defaultDropdownMaxByType;
+
       if (existing) {
+        // Merge with existing values if partial update
+        const existingMaxByType = (existing.dropdownMaxByType as Record<string, number>) || defaultDropdownMaxByType;
+        const mergedMaxByType = data.dropdownMaxByType 
+          ? { ...existingMaxByType, ...data.dropdownMaxByType }
+          : existingMaxByType;
+
         return this.prisma.inventoryFormConfig.update({
           where: { id: existing.id },
           data: {
@@ -60,8 +69,7 @@ export class InventoryFormConfigService {
             isVisible: data.isVisible !== undefined ? data.isVisible : existing.isVisible,
             isRequired: data.isRequired !== undefined ? data.isRequired : existing.isRequired,
             dropdownMin: data.dropdownMin !== undefined ? data.dropdownMin : existing.dropdownMin,
-            dropdownMax: data.dropdownMax !== undefined ? data.dropdownMax : existing.dropdownMax,
-            dropdownMaxW2: data.dropdownMaxW2 !== undefined ? data.dropdownMaxW2 : existing.dropdownMaxW2,
+            dropdownMaxByType: mergedMaxByType,
             displayOrder: data.displayOrder !== undefined ? data.displayOrder : existing.displayOrder,
           },
         });
@@ -74,8 +82,7 @@ export class InventoryFormConfigService {
             isVisible: data.isVisible !== false,
             isRequired: data.isRequired === true,
             dropdownMin: data.dropdownMin || 1,
-            dropdownMax: data.dropdownMax || 5,
-            dropdownMaxW2: data.dropdownMaxW2 || 5,
+            dropdownMaxByType: dropdownMaxByType,
             displayOrder: data.displayOrder || 0,
             user: { connect: { id: userId } }, // Use relation syntax as Prisma requires
           },
@@ -94,8 +101,7 @@ export class InventoryFormConfigService {
     isVisible?: boolean;
     isRequired?: boolean;
     dropdownMin?: number;
-    dropdownMax?: number;
-    dropdownMaxW2?: number;
+    dropdownMaxByType?: Record<string, number>;
     displayOrder?: number;
   }>, userId: string): Promise<InventoryFormConfig[]> {
     try {

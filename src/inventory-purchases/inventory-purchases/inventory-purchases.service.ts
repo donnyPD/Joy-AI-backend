@@ -8,45 +8,60 @@ export class InventoryPurchasesService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAllByTeamMember(technicianId: string, year?: number): Promise<InventoryTechnicianPurchase[]> {
+  async findAllByTeamMember(technicianId: string, userId: string, year?: number): Promise<InventoryTechnicianPurchase[]> {
     try {
-      const where: Prisma.InventoryTechnicianPurchaseWhereInput = {
-        technicianId,
-      };
-
-      // If year is provided, filter by year in purchaseDate
-      if (year !== undefined) {
-        const yearStart = `${year}-01-01`;
-        const yearEnd = `${year}-12-31`;
-        where.purchaseDate = {
-          gte: yearStart,
-          lte: yearEnd,
-        };
-      }
-
-      return this.prisma.inventoryTechnicianPurchase.findMany({
-        where,
+      // Fetch all purchases for the technician (filtered by userId for security)
+      const purchases = await this.prisma.inventoryTechnicianPurchase.findMany({
+        where: {
+          technicianId,
+          userId,
+        },
         orderBy: { createdAt: 'desc' },
       });
+
+      // If year is provided, filter by year in purchaseDate (MM/DD/YYYY format)
+      // Use string matching like Replit implementation since purchaseDate is stored as text
+      if (year !== undefined) {
+        const yearStr = year.toString();
+        return purchases.filter((p) => {
+          const dateStr = p.purchaseDate;
+          // Check if the year string is included in the date string
+          // This works for MM/DD/YYYY format where year is at the end
+          return dateStr.includes(yearStr);
+        });
+      }
+
+      return purchases;
     } catch (error) {
       this.logger.error(`Error fetching inventory purchases: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  async update(id: string, data: Prisma.InventoryTechnicianPurchaseUpdateInput): Promise<InventoryTechnicianPurchase> {
+  async update(id: string, data: Prisma.InventoryTechnicianPurchaseUpdateInput, userId: string): Promise<InventoryTechnicianPurchase> {
     try {
+      // First verify the purchase belongs to the user
+      const existing = await this.prisma.inventoryTechnicianPurchase.findFirst({
+        where: { id, userId },
+      });
+      if (!existing) {
+        throw new NotFoundException(`Inventory technician purchase with ID ${id} not found`);
+      }
+
       const purchase = await this.prisma.inventoryTechnicianPurchase.update({
         where: { id },
         data,
       });
-      this.logger.log(`Updated inventory purchase: ${id}`);
+      this.logger.log(`Updated inventory technician purchase: ${id}`);
       return purchase;
     } catch (error) {
-      if (error.code === 'P2025') {
-        throw new NotFoundException(`Inventory purchase with ID ${id} not found`);
+      if (error instanceof NotFoundException) {
+        throw error;
       }
-      this.logger.error(`Error updating inventory purchase: ${error.message}`, error.stack);
+      if (error.code === 'P2025') {
+        throw new NotFoundException(`Inventory technician purchase with ID ${id} not found`);
+      }
+      this.logger.error(`Error updating inventory technician purchase: ${error.message}`, error.stack);
       throw error;
     }
   }
