@@ -1668,6 +1668,27 @@ export class ApiController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch('inventory-column-definitions/reorder')
+  async reorderInventoryColumnDefinitions(@Body() body: { updates: Array<{ id: string; displayOrder: number }> }, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      if (!Array.isArray(body.updates)) {
+        return { message: 'Updates array is required' };
+      }
+
+      const results = await this.inventoryColumnDefinitionsService.reorder(body.updates, userId);
+      return { success: true, updated: results.length };
+    } catch (error) {
+      console.error('Error reordering inventory column definitions:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory-column-definitions/:id')
   async updateInventoryColumnDefinition(@Param('id') id: string, @Body() body: any, @Request() req: any) {
     try {
@@ -1705,27 +1726,6 @@ export class ApiController {
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory column definition:', error);
-      throw error;
-    }
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('inventory-column-definitions/reorder')
-  async reorderInventoryColumnDefinitions(@Body() body: { updates: Array<{ id: string; displayOrder: number }> }, @Request() req: any) {
-    try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        throw new Error('User ID not found in request');
-      }
-
-      if (!Array.isArray(body.updates)) {
-        return { message: 'Updates array is required' };
-      }
-
-      const results = await this.inventoryColumnDefinitionsService.reorder(body.updates, userId);
-      return { success: true, updated: results.length };
-    } catch (error) {
-      console.error('Error reordering inventory column definitions:', error);
       throw error;
     }
   }
@@ -1999,6 +1999,133 @@ export class ApiController {
       return { value: user.defaultIdealInventory };
     } catch (error) {
       console.error('Error updating default ideal inventory:', error);
+      throw error;
+    }
+  }
+
+  // Inventory column description endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/inventory')
+  async getInventoryColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { inventoryColumnDescription: true },
+      });
+      return { value: user?.inventoryColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/inventory')
+  async updateInventoryColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { inventoryColumnDescription: data.value },
+        select: { inventoryColumnDescription: true },
+      });
+      return { value: user.inventoryColumnDescription };
+    } catch (error) {
+      console.error('Error updating inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/ideal-inventory')
+  async getIdealInventoryColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { idealInventoryColumnDescription: true },
+      });
+      return { value: user?.idealInventoryColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching ideal inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/ideal-inventory')
+  async updateIdealInventoryColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { idealInventoryColumnDescription: data.value },
+        select: { idealInventoryColumnDescription: true },
+      });
+      return { value: user.idealInventoryColumnDescription };
+    } catch (error) {
+      console.error('Error updating ideal inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/to-be-ordered')
+  async getToBeOrderedColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { toBeOrderedColumnDescription: true },
+      });
+      return { value: user?.toBeOrderedColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching to be ordered column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/to-be-ordered')
+  async updateToBeOrderedColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { toBeOrderedColumnDescription: data.value },
+        select: { toBeOrderedColumnDescription: true },
+      });
+      return { value: user.toBeOrderedColumnDescription };
+    } catch (error) {
+      console.error('Error updating to be ordered column description:', error);
       throw error;
     }
   }
