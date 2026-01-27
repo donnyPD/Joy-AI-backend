@@ -2510,7 +2510,7 @@ export class ApiController {
       const jobs = await this.jobsService.findAll(limitNum, skipNum);
       
       // Transform database structure to match frontend expectations
-      const transformedJobs = jobs.map((job) => ({
+      const transformedJobs = jobs.map((job: any) => ({
         id: job.jId,
         jobNumber: job.jobNumber || '',
         title: job.title || '',

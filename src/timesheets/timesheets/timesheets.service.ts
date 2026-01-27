@@ -55,7 +55,7 @@ export class TimesheetsService {
 
       const timesheetData = this.transformJobberData(jobberEntry);
 
-      const timesheet = await this.prisma.timesheet.upsert({
+      const timesheet = await (this.prisma as any).timesheet.upsert({
         where: { jId: timesheetData.jId },
         update: timesheetData,
         create: timesheetData,
@@ -88,7 +88,7 @@ export class TimesheetsService {
 
       const timesheetData = this.transformJobberData(jobberEntry);
 
-      const timesheet = await this.prisma.timesheet.upsert({
+      const timesheet = await (this.prisma as any).timesheet.upsert({
         where: { jId: timesheetData.jId },
         update: timesheetData,
         create: timesheetData,
@@ -111,7 +111,7 @@ export class TimesheetsService {
 
       this.logger.log(`Processing TIMESHEET_DESTROY for: ${entryId}`);
 
-      await this.prisma.timesheet.deleteMany({
+      await (this.prisma as any).timesheet.deleteMany({
         where: { jId: entryId },
       });
 
@@ -125,7 +125,7 @@ export class TimesheetsService {
 
   async findAll(limit: number = 100, skip: number = 0) {
     try {
-      const timesheets = await this.prisma.timesheet.findMany({
+      const timesheets = await (this.prisma as any).timesheet.findMany({
         take: limit,
         skip,
         orderBy: { dbCreatedAt: 'desc' },
@@ -139,7 +139,7 @@ export class TimesheetsService {
 
   async findOne(jId: string) {
     try {
-      const timesheet = await this.prisma.timesheet.findUnique({
+      const timesheet = await (this.prisma as any).timesheet.findUnique({
         where: { jId },
       });
       return timesheet;

@@ -56,7 +56,7 @@ export class InvoicesService {
 
       const invoiceData = this.transformJobberData(jobberInvoice);
 
-      const invoice = await this.prisma.invoice.upsert({
+      const invoice = await (this.prisma as any).invoice.upsert({
         where: { jId: invoiceData.jId },
         update: invoiceData,
         create: invoiceData,
@@ -89,7 +89,7 @@ export class InvoicesService {
 
       const invoiceData = this.transformJobberData(jobberInvoice);
 
-      const invoice = await this.prisma.invoice.upsert({
+      const invoice = await (this.prisma as any).invoice.upsert({
         where: { jId: invoiceData.jId },
         update: invoiceData,
         create: invoiceData,
@@ -112,7 +112,7 @@ export class InvoicesService {
 
       this.logger.log(`Processing INVOICE_DESTROY for: ${invoiceId}`);
 
-      await this.prisma.invoice.deleteMany({
+      await (this.prisma as any).invoice.deleteMany({
         where: { jId: invoiceId },
       });
 
@@ -126,7 +126,7 @@ export class InvoicesService {
 
   async findAll(limit: number = 100, skip: number = 0) {
     try {
-      const invoices = await this.prisma.invoice.findMany({
+      const invoices = await (this.prisma as any).invoice.findMany({
         take: limit,
         skip: skip,
         orderBy: { dbCreatedAt: 'desc' },
@@ -140,7 +140,7 @@ export class InvoicesService {
 
   async findOne(id: string) {
     try {
-      const invoice = await this.prisma.invoice.findUnique({
+      const invoice = await (this.prisma as any).invoice.findUnique({
         where: { id },
       });
       return invoice;
@@ -152,7 +152,7 @@ export class InvoicesService {
 
   async count() {
     try {
-      return await this.prisma.invoice.count();
+      return await (this.prisma as any).invoice.count();
     } catch (error) {
       this.logger.error('Error counting invoices:', error);
       throw error;
