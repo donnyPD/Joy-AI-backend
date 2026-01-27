@@ -208,6 +208,7 @@ export class QuotesService {
     const clientName = [client.firstName, client.lastName].filter(Boolean).join(' ') || '';
     const clientEmail = client.emails?.[0]?.address || '';
     const clientPhone = client.phones?.[0]?.number || '';
+    const sentTo = client.emails?.map((email: any) => email?.address).filter(Boolean).join(', ') || '';
 
     // Property info
     const property = jobberQuote.property || {};
@@ -255,10 +256,10 @@ export class QuotesService {
       clientEmail: clientEmail || null,
       clientPhone: clientPhone || null,
       servicePropertyName: property.name || null,
-      serviceStreet: client.billingAddress?.street || null,
-      serviceCity: client.billingAddress?.city || null,
-      serviceProvince: client.billingAddress?.province || null,
-      serviceZip: client.billingAddress?.postalCode || null,
+      serviceStreet: propertyAddress.street || null,
+      serviceCity: propertyAddress.city || null,
+      serviceProvince: propertyAddress.province || null,
+      serviceZip: propertyAddress.postalCode || null,
       serviceCountry: propertyAddress.country || null,
       title: jobberQuote.title || null,
       status: jobberQuote.quoteStatus || null,
@@ -285,12 +286,18 @@ export class QuotesService {
       desiredFrequency: getCustomFieldByLabel(customFields, 'Desired Frequency') || null,
       typeOfCleaning: getCustomFieldByLabel(customFields, 'Type of Cleaning') || null,
       exactSqFt: getCustomFieldByLabel(customFields, 'Exact SqFt') || null,
-      additionalRequest: getCustomFieldByLabel(customFields, 'Additional Requests') || null,
+      additionalRequest:
+        getCustomFieldByLabel(customFields, 'Additional Request') ||
+        getCustomFieldByLabel(customFields, 'Additional Requests') ||
+        null,
       zone: getCustomFieldByLabel(customFields, 'Zone') || null,
       dirtScale: getCustomFieldByLabel(customFields, 'Dirt Scale') || null,
       birthdayMonth: getCustomFieldByLabel(customFields, 'Birthday Month') || null,
       referredBy: getCustomFieldByLabel(customFields, 'Referred By') || null,
-      typeOfProperty: getCustomFieldByLabel(customFields, 'Type od Property') || null,
+      typeOfProperty:
+        getCustomFieldByLabel(customFields, 'Type of Property') ||
+        getCustomFieldByLabel(customFields, 'Type od Property') ||
+        null,
       parkingDetails: getCustomFieldByLabel(customFields, 'Parking Details') || null,
       squareFoot: getCustomFieldByLabel(customFields, 'Square Foot') || null,
       frequency: getCustomFieldByLabel(customFields, 'Frequency') || null,
@@ -299,9 +306,47 @@ export class QuotesService {
       clientJson: JSON.stringify(client),
       propertyJson: JSON.stringify(property),
       amountsJson: JSON.stringify(jobberQuote.amounts || {}),
-      leadSource: null,
-      sentTo: null,
-      sentByUser: null,
+      leadSource:
+        getCustomFieldByLabel(customFields, 'Lead Source') ||
+        getCustomFieldByLabel(client.customFields || [], 'Lead Source') ||
+        null,
+      sentTo: sentTo || null,
+      sentByUser: salespersonName || null,
     };
+  }
+
+  async findAll(limit: number = 100, skip: number = 0) {
+    try {
+      const quotes = await this.prisma.quote.findMany({
+        take: limit,
+        skip: skip,
+        orderBy: { createdAt: 'desc' },
+      });
+      return quotes;
+    } catch (error) {
+      this.logger.error('Error fetching quotes:', error);
+      throw error;
+    }
+  }
+
+  async findOne(jId: string) {
+    try {
+      const quote = await this.prisma.quote.findUnique({
+        where: { jId },
+      });
+      return quote;
+    } catch (error) {
+      this.logger.error('Error fetching quote:', error);
+      throw error;
+    }
+  }
+
+  async count() {
+    try {
+      return await this.prisma.quote.count();
+    } catch (error) {
+      this.logger.error('Error counting quotes:', error);
+      throw error;
+    }
   }
 }

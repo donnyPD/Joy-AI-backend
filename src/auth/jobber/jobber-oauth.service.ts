@@ -115,7 +115,14 @@ export class JobberOAuthService {
       console.log('✅ Access token received');
       console.log('Token length:', access_token?.length || 0);
       console.log('Refresh token:', refresh_token ? 'Received' : 'Missing');
+      console.log('Refresh token length:', refresh_token?.length || 0);
       console.log('Expires in:', expires_in, 'seconds');
+      
+      // Validate that we received a refresh token
+      if (!refresh_token) {
+        this.logger.error('⚠️ WARNING: No refresh token received from Jobber OAuth response!');
+        this.logger.error('This may cause issues with token refresh later.');
+      }
 
       // Calculate expiration time
       const expiresAt = expires_in
@@ -136,24 +143,34 @@ export class JobberOAuthService {
 
       // Save token to user (including refresh token and expiration)
       console.log('💾 Saving Jobber token to user record...');
+      this.logger.log(`Saving tokens for user ${userId}, accountId: ${accountId}`);
+      this.logger.log(`Access token length: ${access_token?.length || 0}`);
+      this.logger.log(`Refresh token: ${refresh_token ? 'Present' : 'Missing'}`);
+      this.logger.log(`Token expires at: ${expiresAt?.toISOString() || 'Not set'}`);
+      
       await this.authService.updateJobberToken(
         userId,
         access_token,
         accountId,
-        refresh_token,
+        refresh_token, // Always use the new refresh token from OAuth response
         expiresAt,
       );
       console.log('✅ Token saved to database');
+      this.logger.log('✅ Tokens saved successfully to database');
 
       // Register webhooks for this user
       console.log('🔔 Registering webhooks for user...');
+      this.logger.log(`Starting webhook registration for user ${userId}...`);
       try {
         await this.webhookService.registerAllWebhooks(access_token);
         console.log(`✅ Webhooks registered for user: ${userId}`);
-        this.logger.log(`✅ Webhooks registered for user: ${userId}`);
-      } catch (error) {
+        this.logger.log(`✅ All webhooks successfully registered for user: ${userId}`);
+      } catch (error: any) {
         console.error(`❌ Failed to register webhooks for user ${userId}:`, error);
-        this.logger.error(`Failed to register webhooks for user ${userId}:`, error);
+        this.logger.error(`❌ Failed to register webhooks for user ${userId}:`, error.message);
+        this.logger.error('Webhook registration error details:', error);
+        // Don't throw - connection can still succeed even if webhook registration fails
+        // User can manually trigger webhook registration later if needed
       }
 
       return {
@@ -170,14 +187,17 @@ export class JobberOAuthService {
 
   async refreshAccessToken(userId: string): Promise<string> {
     console.log(`🔄 Refreshing access token for user: ${userId}`);
+    this.logger.log(`Attempting to refresh access token for user: ${userId}`);
     
     const user = await this.authService.getUserById(userId);
     
     if (!user?.jobberRefreshToken) {
+      this.logger.warn(`No refresh token found for user ${userId}`);
       throw new UnauthorizedException('No refresh token available. Please reconnect your Jobber account.');
     }
 
     try {
+      this.logger.log(`Using refresh token (length: ${user.jobberRefreshToken.length}) for refresh request`);
       const response = await axios.post(
         'https://api.getjobber.com/api/oauth/token',
         {
@@ -199,21 +219,48 @@ export class JobberOAuthService {
         : new Date(Date.now() + 3600 * 1000);
 
       console.log('✅ Access token refreshed successfully');
+      this.logger.log('✅ Access token refreshed successfully');
 
       // Update tokens in database
+      // Always use the new refresh token if provided, otherwise keep the existing one
+      const newRefreshToken = refresh_token || user.jobberRefreshToken;
+      this.logger.log(`Updating tokens - new refresh token: ${newRefreshToken ? 'Provided' : 'Using existing'}`);
+      
       await this.authService.updateJobberToken(
         userId,
         access_token,
         user.jobberAccountId || '',
-        refresh_token || user.jobberRefreshToken, // Use new refresh token if provided, else keep old one
+        newRefreshToken, // Use new refresh token if provided, else keep old one
         expiresAt,
       );
 
+      this.logger.log('✅ Tokens updated in database after refresh');
       return access_token;
     } catch (error: any) {
-      this.logger.error('Error refreshing access token:', error);
+      this.logger.error('❌ Error refreshing access token:', error);
+      const errorMessage = error.response?.data?.error_description || error.response?.data || error.message;
+      this.logger.error('Refresh token error details:', errorMessage);
+      
+      // Check if the error is due to invalid refresh token
+      const isInvalidToken = 
+        errorMessage?.includes('refresh token is not valid') ||
+        errorMessage?.includes('invalid refresh token') ||
+        errorMessage?.includes('refresh_token') ||
+        error.response?.status === 401;
+
+      if (isInvalidToken) {
+        this.logger.error('🚨 Invalid refresh token detected. Clearing all Jobber tokens for user.');
+        // Automatically clear invalid tokens
+        try {
+          await this.authService.disconnectJobber(userId);
+          this.logger.log('✅ Cleared invalid tokens from database');
+        } catch (clearError) {
+          this.logger.error('Failed to clear invalid tokens:', clearError);
+        }
+      }
+
       throw new UnauthorizedException(
-        error.response?.data?.error_description || 'Failed to refresh access token. Please reconnect your Jobber account.',
+        'Failed to refresh access token. Please disconnect and reconnect your Jobber account in Settings.',
       );
     }
   }
@@ -237,8 +284,20 @@ export class JobberOAuthService {
   }
 
   async disconnect(userId: string): Promise<{ success: boolean }> {
+    this.logger.log(`🔌 Disconnecting Jobber for user: ${userId}`);
+    
+    // Get user to check if they have tokens
+    const user = await this.authService.getUserById(userId);
+    
+    if (!user?.jobberAccessToken) {
+      this.logger.log('⚠️ No Jobber tokens found, clearing any remaining data...');
+      await this.authService.disconnectJobber(userId);
+      return { success: true };
+    }
+
     // Best-effort: call Jobber appDisconnect if we have a valid token.
     try {
+      this.logger.log('📡 Attempting to notify Jobber of disconnect...');
       const accessToken = await this.getValidAccessToken(userId);
       await axios.post(
         'https://api.getjobber.com/api/graphql',
@@ -262,12 +321,18 @@ export class JobberOAuthService {
           },
         },
       );
-    } catch (error) {
-      // ignore - we still clear local tokens
-      this.logger.warn(`Jobber appDisconnect failed (continuing local disconnect): ${(error as any)?.message}`);
+      this.logger.log('✅ Jobber notified of disconnect');
+    } catch (error: any) {
+      // ignore - we still clear local tokens even if API call fails
+      this.logger.warn(`⚠️ Jobber appDisconnect API call failed (continuing local disconnect): ${error?.message}`);
+      this.logger.warn('This is normal if tokens are already invalid. Proceeding with local cleanup...');
     }
 
+    // Always clear local tokens regardless of API call success
+    this.logger.log('🧹 Clearing local Jobber tokens and account data...');
     await this.authService.disconnectJobber(userId);
+    this.logger.log('✅ Local Jobber data cleared successfully');
+    
     return { success: true };
   }
 }

@@ -94,6 +94,46 @@ export class WebhookService {
         topic: 'JOB_CLOSED',
         url: `${this.baseUrl}/webhooks/jobber/job/closed`,
       },
+      {
+        topic: 'INVOICE_CREATE',
+        url: `${this.baseUrl}/webhooks/jobber/invoice/create`,
+      },
+      {
+        topic: 'INVOICE_UPDATE',
+        url: `${this.baseUrl}/webhooks/jobber/invoice/update`,
+      },
+      {
+        topic: 'INVOICE_DESTROY',
+        url: `${this.baseUrl}/webhooks/jobber/invoice/destroy`,
+      },
+      {
+        topic: 'VISIT_CREATE',
+        url: `${this.baseUrl}/webhooks/jobber/visit/create`,
+      },
+      {
+        topic: 'VISIT_UPDATE',
+        url: `${this.baseUrl}/webhooks/jobber/visit/update`,
+      },
+      {
+        topic: 'VISIT_DESTROY',
+        url: `${this.baseUrl}/webhooks/jobber/visit/destroy`,
+      },
+      {
+        topic: 'VISIT_COMPLETE',
+        url: `${this.baseUrl}/webhooks/jobber/visit/completed`,
+      },
+      {
+        topic: 'TIMESHEET_CREATE',
+        url: `${this.baseUrl}/webhooks/jobber/timesheet/create`,
+      },
+      {
+        topic: 'TIMESHEET_UPDATE',
+        url: `${this.baseUrl}/webhooks/jobber/timesheet/update`,
+      },
+      {
+        topic: 'TIMESHEET_DESTROY',
+        url: `${this.baseUrl}/webhooks/jobber/timesheet/destroy`,
+      },
     ];
 
     for (const webhook of webhooks) {
