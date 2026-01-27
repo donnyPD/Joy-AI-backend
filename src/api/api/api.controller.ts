@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -27,6 +27,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller()
 export class ApiController {
+  private readonly logger = new Logger(ApiController.name);
+
   constructor(
     private clientsService: ClientsService,
     private teamMembersService: TeamMembersService,
@@ -2346,24 +2348,20 @@ export class ApiController {
         // Find or create inventory technician by submitter name
         let technician = await this.inventoryTechniciansService.findByName(submitterName.trim(), userId);
         if (!technician) {
-          console.log(`Technician not found, creating new one: ${submitterName.trim()}`);
           technician = await this.inventoryTechniciansService.create({
             techName: submitterName.trim(),
           }, userId);
-          console.log(`Created technician with ID: ${technician.id}`);
-        } else {
-          console.log(`Found existing technician with ID: ${technician.id}`);
         }
 
-        // Format date as MM/DD/YYYY in America/New_York timezone
+        // Format date as ISO (YYYY-MM-DD) in America/New_York timezone
         const nowNY = new Date().toLocaleString('en-US', {
           timeZone: 'America/New_York',
         });
         const dateNY = new Date(nowNY);
-        const day = String(dateNY.getDate()).padStart(2, '0');
-        const month = String(dateNY.getMonth() + 1).padStart(2, '0');
         const year = dateNY.getFullYear();
-        const formattedDate = `${month}/${day}/${year}`;
+        const month = String(dateNY.getMonth() + 1).padStart(2, '0');
+        const day = String(dateNY.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${day}`;
 
         // Combine products and tools into items list
         const allItemsBought: string[] = [];
@@ -2406,13 +2404,10 @@ export class ApiController {
           await this.inventoryTechniciansService.update(technician.id, {
             latestPurchaseDate: formattedDate,
           }, userId);
-
-          console.log(`Created purchase record for ${submitterName.trim()}: ${itemsRaw}`);
         }
       } catch (techError) {
         // Log error but don't fail the entire submission
-        console.error('Error creating technician purchase record:', techError);
-        console.error('Error stack:', techError.stack);
+        this.logger.error('Error creating technician purchase record', techError.stack);
       }
 
       return submission;

@@ -56,8 +56,23 @@ export class InventoryFormConfigService {
       const dropdownMaxByType = data.dropdownMaxByType || defaultDropdownMaxByType;
 
       if (existing) {
-        // Merge with existing values if partial update
-        const existingMaxByType = (existing.dropdownMaxByType as Record<string, number>) || defaultDropdownMaxByType;
+        // Validate and merge with existing values if partial update
+        let existingMaxByType: Record<string, number> = defaultDropdownMaxByType;
+        
+        // Validate existing.dropdownMaxByType JSON shape
+        if (existing.dropdownMaxByType && typeof existing.dropdownMaxByType === 'object' && existing.dropdownMaxByType !== null) {
+          const validated: Record<string, number> = {};
+          for (const [key, value] of Object.entries(existing.dropdownMaxByType)) {
+            if (typeof value === 'number' && isFinite(value)) {
+              validated[key] = value;
+            }
+          }
+          // Only use validated object if it has entries, otherwise fall back to default
+          if (Object.keys(validated).length > 0) {
+            existingMaxByType = validated;
+          }
+        }
+        
         const mergedMaxByType = data.dropdownMaxByType 
           ? { ...existingMaxByType, ...data.dropdownMaxByType }
           : existingMaxByType;

@@ -20,14 +20,19 @@ export class InventoryPurchasesService {
       });
 
       // If year is provided, filter by year in purchaseDate (MM/DD/YYYY format)
-      // Use string matching like Replit implementation since purchaseDate is stored as text
+      // Parse the date string to extract the year segment explicitly to avoid false positives
       if (year !== undefined) {
-        const yearStr = year.toString();
+        const numericYear = typeof year === 'number' ? year : parseInt(year.toString(), 10);
         return purchases.filter((p) => {
           const dateStr = p.purchaseDate;
-          // Check if the year string is included in the date string
-          // This works for MM/DD/YYYY format where year is at the end
-          return dateStr.includes(yearStr);
+          if (!dateStr) return false;
+          
+          // Parse MM/DD/YYYY format - split by '/' and get the last segment (year)
+          const parts = dateStr.split('/');
+          if (parts.length !== 3) return false;
+          
+          const parsedYear = parseInt(parts[2], 10);
+          return !isNaN(parsedYear) && parsedYear === numericYear;
         });
       }
 

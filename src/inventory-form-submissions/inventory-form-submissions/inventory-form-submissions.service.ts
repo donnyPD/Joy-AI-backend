@@ -130,35 +130,16 @@ export class InventoryFormSubmissionsService {
   // Get available months from form submissions
   async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
     try {
-      const allSubmissions = await this.prisma.inventoryFormSubmission.findMany({
-        where: { userId },
-        select: {
-          createdAt: true,
-        },
-      });
+      const result = await this.prisma.$queryRaw<Array<{ month: number; year: number }>>`
+        SELECT DISTINCT
+          EXTRACT(MONTH FROM created_at)::integer as month,
+          EXTRACT(YEAR FROM created_at)::integer as year
+        FROM inventory_form_submissions
+        WHERE user_id = ${userId}
+        ORDER BY year DESC, month DESC
+      `;
 
-      const monthYearSet = new Set<string>();
-      for (const submission of allSubmissions) {
-        const submissionDate = new Date(submission.createdAt);
-        if (!isNaN(submissionDate.getTime())) {
-          const month = submissionDate.getMonth() + 1;
-          const year = submissionDate.getFullYear();
-          monthYearSet.add(`${month}-${year}`);
-        }
-      }
-
-      const months = Array.from(monthYearSet).map((key) => {
-        const [month, year] = key.split('-').map(Number);
-        return { month, year };
-      });
-
-      // Sort in descending order (newest first)
-      months.sort((a, b) => {
-        if (a.year !== b.year) return b.year - a.year;
-        return b.month - a.month;
-      });
-
-      return months;
+      return result;
     } catch (error) {
       this.logger.error(`Error fetching available form submission months: ${error.message}`, error.stack);
       throw error;
