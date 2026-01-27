@@ -7,6 +7,74 @@ export class TagsService {
 
   constructor(private prisma: PrismaService) {}
 
+  async upsertTagsDb(input: {
+    clientJId: string;
+    displayName?: string;
+    mainPhones?: string;
+    emails?: string;
+    createdDate?: Date | string | null;
+    tags: string[];
+  }) {
+    try {
+      const { clientJId, displayName, mainPhones, emails, createdDate, tags } = input;
+      if (!clientJId || !tags || tags.length === 0) {
+        return;
+      }
+
+      const normalizedTags = tags
+        .map((t) => (t || '').trim())
+        .filter((t) => t.length > 0);
+      if (normalizedTags.length === 0) {
+        return;
+      }
+
+      const existing = await this.prisma.tagsDb.findUnique({
+        where: { clientJId },
+      });
+
+      const existingTags = (existing?.tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const mergedTags = this.mergeTagsCaseInsensitive(existingTags, normalizedTags);
+      const mergedTagsString = mergedTags.join(', ');
+
+      const createdDateValue =
+        existing?.createdDate ||
+        (createdDate ? new Date(createdDate as any) : undefined);
+
+      if (existing) {
+        await this.prisma.tagsDb.update({
+          where: { clientJId },
+          data: {
+            displayName: displayName || existing.displayName,
+            mainPhones: mainPhones || existing.mainPhones,
+            emails: emails || existing.emails,
+            createdDate: createdDateValue,
+            tags: mergedTagsString,
+          },
+        });
+      } else {
+        await this.prisma.tagsDb.create({
+          data: {
+            clientJId,
+            displayName: displayName || null,
+            mainPhones: mainPhones || null,
+            emails: emails || null,
+            createdDate: createdDateValue || null,
+            tags: mergedTagsString,
+          },
+        });
+      }
+
+      this.logger.log(`✅ TagsDb upserted for client: ${clientJId}`);
+    } catch (error) {
+      this.logger.error('Error upserting TagsDb:', error);
+      throw error;
+    }
+  }
+
   async syncTagsToClient(clientJId: string, tags: Array<{ id: string; label: string }>) {
     try {
       if (!clientJId || !tags || tags.length === 0) {
@@ -54,5 +122,23 @@ export class TagsService {
     return this.prisma.tag.findUnique({
       where: { jId },
     });
+  }
+
+  private mergeTagsCaseInsensitive(existing: string[], incoming: string[]) {
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    const addTag = (tag: string) => {
+      const key = tag.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(tag);
+      }
+    };
+
+    existing.forEach(addTag);
+    incoming.forEach(addTag);
+
+    return result;
   }
 }

@@ -125,10 +125,17 @@ export class JobsService {
 
       // Generate and sync tags from job title
       const client = jobberJob.client;
-      if (client?.id && jobberJob.title) {
+      console.log('🔍 [TAGS DEBUG] Checking conditions for tag generation...');
+      console.log('🔍 [TAGS DEBUG] client?.id:', client?.id);
+      console.log('🔍 [TAGS DEBUG] jobberJob.title:', jobberJob.title);
+      if (client?.id) {
+        console.log('✅ [TAGS DEBUG] Conditions met, calling generateAndSyncTagsFromJob');
         this.logger.log('🏷️ Generating tags from job title...');
         await this.generateAndSyncTagsFromJob(jobberJob, client.id, client.emails?.[0]?.address || '');
         this.logger.log('✅ Tags generated');
+      } else {
+        console.log('❌ [TAGS DEBUG] Conditions not met, skipping tag generation');
+        console.log('❌ [TAGS DEBUG] client?.id exists:', !!client?.id);
       }
 
       this.logger.log(`✅ JOB_CREATE processing completed successfully for: ${job.jId}`);
@@ -171,8 +178,14 @@ export class JobsService {
 
       // Generate and sync tags from job title
       const client = jobberJob.client;
-      if (client?.id && jobberJob.title) {
+      console.log('🔍 [TAGS DEBUG] [JOB_UPDATE] Checking conditions for tag generation...');
+      console.log('🔍 [TAGS DEBUG] [JOB_UPDATE] client?.id:', client?.id);
+      console.log('🔍 [TAGS DEBUG] [JOB_UPDATE] jobberJob.title:', jobberJob.title);
+      if (client?.id) {
+        console.log('✅ [TAGS DEBUG] [JOB_UPDATE] Conditions met, calling generateAndSyncTagsFromJob');
         await this.generateAndSyncTagsFromJob(jobberJob, client.id, client.emails?.[0]?.address || '');
+      } else {
+        console.log('❌ [TAGS DEBUG] [JOB_UPDATE] Conditions not met, skipping tag generation');
       }
 
       this.logger.log(`✅ Job updated: ${job.jId}`);
@@ -451,114 +464,230 @@ export class JobsService {
   }
 
   private async generateAndSyncTagsFromJob(jobberJob: any, clientJId: string, clientEmail: string) {
+    console.log('🔍 [TAGS DEBUG] generateAndSyncTagsFromJob called');
+    console.log('🔍 [TAGS DEBUG] jobberJob.title:', jobberJob.title);
+    console.log('🔍 [TAGS DEBUG] jobberJob.jobType:', jobberJob.jobType);
+    console.log('🔍 [TAGS DEBUG] clientJId:', clientJId);
+    console.log('🔍 [TAGS DEBUG] clientEmail:', clientEmail);
+    
     try {
-      if (!jobberJob.title) {
+      // Generate new tags from job title
+      console.log('🔍 [TAGS DEBUG] Calling generateTagsFromJobTitle...');
+      const newTags = this.generateTagsFromJobTitle(jobberJob.title, jobberJob.jobType);
+      console.log('🔍 [TAGS DEBUG] Generated new tags:', newTags);
+      console.log('🔍 [TAGS DEBUG] New tags count:', newTags.length);
+
+      if (newTags.length === 0) {
+        console.log('⚠️ [TAGS DEBUG] No new tags generated, skipping sync');
         return;
       }
 
-      // Get existing tags from Tags table
-      const existingTags = await this.tagsService.getTagsByClient(clientJId);
-      const existingTagLabels = existingTags.map((t) => t.label);
+      // Fallbacks from custom fields if title doesn't include frequency/zone
+      const customFields = jobberJob.customFields || [];
+      const frequencyValue =
+        this.getCustomFieldByLabel(customFields, 'Frequency') ||
+        this.getCustomFieldByLabel(customFields, 'Desired Frequency');
+      const zoneValue = this.getCustomFieldByLabel(customFields, 'Zone');
 
-      // Generate new tags from job title
-      const newTags = this.generateTagsFromJobTitle(jobberJob.title, jobberJob.jobType);
-
-      // Merge without duplicates
-      const allTagLabels = [...new Set([...existingTagLabels, ...newTags])];
-
-      // Sync to Tags table
-      const tagsToSync = allTagLabels.map((label) => ({
-        id: '', // Will be generated or fetched from Jobber if needed
-        label: label,
-      }));
-
-      // Sync new tags to Tags table
-      for (const tagLabel of newTags) {
-        if (!existingTagLabels.includes(tagLabel)) {
-          // Check if tag with same label exists for this client
-          const existingTag = await this.prisma.tag.findFirst({
-            where: { label: tagLabel, clientJId: clientJId },
-          });
-
-          if (!existingTag) {
-            // Create new tag entry with unique temp ID
-            const tempJId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-            try {
-              await this.prisma.tag.create({
-                data: {
-                  jId: tempJId,
-                  label: tagLabel,
-                  clientJId: clientJId,
-                },
-              });
-              this.logger.log(`✅ Created tag: ${tagLabel} for client: ${clientJId}`);
-            } catch (error: any) {
-              // If creation fails (e.g., duplicate jId), try to find and update
-              if (error.code === 'P2002') {
-                // Unique constraint violation - tag might exist with different jId
-                const foundTag = await this.prisma.tag.findFirst({
-                  where: { label: tagLabel, clientJId: clientJId },
-                });
-                if (!foundTag) {
-                  this.logger.warn(`Failed to create tag ${tagLabel}:`, error.message);
-                }
-              } else {
-                this.logger.warn(`Failed to create tag ${tagLabel}:`, error.message);
-              }
-            }
-          }
+      const hasFrequencyTag = newTags.some((t) =>
+        ['Monthly', 'Bi-Weekly', 'Weekly', 'Other'].includes(t),
+      );
+      if (!hasFrequencyTag && jobberJob.jobType && jobberJob.jobType !== 'ONE_OFF' && jobberJob.jobType !== 'ONE_TIME') {
+        const normalized = this.normalizeFrequencyTag(frequencyValue || '');
+        if (normalized) {
+          newTags.push(normalized);
+          console.log(`🔍 [TAGS DEBUG] Added frequency tag from custom field: "${normalized}"`);
         }
       }
 
+      const hasZoneTag = newTags.some((t) => t.toLowerCase().startsWith('zone '));
+      if (!hasZoneTag && zoneValue) {
+        const zoneMatch = String(zoneValue).match(/(\d+)/);
+        if (zoneMatch) {
+          newTags.push(`Zone ${zoneMatch[1]}`);
+          console.log(`🔍 [TAGS DEBUG] Added zone tag from custom field: "Zone ${zoneMatch[1]}"`);
+        }
+      }
+
+      const client = jobberJob.client || {};
+      const displayName =
+        [client.firstName, client.lastName].filter(Boolean).join(' ') || client.displayName || '';
+      const mainPhones = client?.phones?.map((p: any) => p?.number).filter(Boolean).join(', ') || '';
+      const emails = client?.emails?.map((e: any) => e?.address).filter(Boolean).join(', ') || clientEmail || '';
+
+      await this.tagsService.upsertTagsDb({
+        clientJId,
+        displayName,
+        mainPhones,
+        emails,
+        createdDate: jobberJob.createdAt || null,
+        tags: newTags,
+      });
+
+      console.log(`✅ [TAGS DEBUG] Tag sync completed for job: ${jobberJob.id}`);
       this.logger.log(`✅ Tags generated and synced for job: ${jobberJob.id}`);
     } catch (error) {
+      console.error('❌ [TAGS DEBUG] Exception in generateAndSyncTagsFromJob:', error);
+      console.error('❌ [TAGS DEBUG] Error message:', error.message);
+      console.error('❌ [TAGS DEBUG] Error stack:', error.stack);
       this.logger.warn('Failed to generate/sync tags (non-critical):', error.message);
     }
   }
 
   private generateTagsFromJobTitle(title: string, jobType: string): string[] {
-    if (!title) return [];
-
-    const parts = title.split(' | ').map((p) => p.trim());
-    if (parts.length < 3) return [];
-
+    console.log('🔍 [TAGS DEBUG] generateTagsFromJobTitle called');
+    console.log('🔍 [TAGS DEBUG] Input title:', title);
+    console.log('🔍 [TAGS DEBUG] Input jobType:', jobType);
+    
     const newTags: string[] = [];
 
-    // Extract zone number from parts[2] (e.g., "Zone 2" -> "2")
-    const zoneMatch = parts[2]?.match(/Zone\s+(\d+)/i);
-    const zoneNumber = zoneMatch ? zoneMatch[1] : '';
-
+    // Always add base tag based on job type (regardless of title format)
     if (jobType === 'ONE_OFF' || jobType === 'ONE_TIME') {
-      // For ONE_TIME jobs
+      console.log('🔍 [TAGS DEBUG] Job type is ONE_TIME/ONE_OFF');
+      // For ONE_TIME jobs - ALWAYS add "1 Time" tag
       newTags.push('1 Time');
-      if (zoneNumber) {
-        newTags.push(`Zone ${zoneNumber}`);
+      console.log('🔍 [TAGS DEBUG] Added base tag: "1 Time"');
+    } else {
+      console.log('🔍 [TAGS DEBUG] Job type is RECURRING');
+      // For RECURRING jobs - ALWAYS add "Recurring" tag
+      newTags.push('Recurring');
+      console.log('🔍 [TAGS DEBUG] Added base tag: "Recurring"');
+    }
+
+    if (!title) {
+      console.log('⚠️ [TAGS DEBUG] No title provided, returning base tags only');
+      return newTags;
+    }
+    // Try to extract additional info from title if it has the expected format
+    const parts = title.split(' | ').map((p) => p.trim());
+    console.log('🔍 [TAGS DEBUG] Title parts after split:', parts);
+    console.log('🔍 [TAGS DEBUG] Parts count:', parts.length);
+    
+    if (parts.length >= 3) {
+      console.log('✅ [TAGS DEBUG] Title has expected format (3+ parts), extracting Zone/Frequency');
+      
+      // Extract zone number from parts[2] (e.g., "Zone 2" -> "2")
+      const zoneMatch = parts[2]?.match(/Zone\s+(\d+)/i);
+      const zoneNumber = zoneMatch ? zoneMatch[1] : '';
+      console.log('🔍 [TAGS DEBUG] Zone match result:', zoneMatch);
+      console.log('🔍 [TAGS DEBUG] Extracted zone number:', zoneNumber);
+
+      if (jobType === 'ONE_OFF' || jobType === 'ONE_TIME') {
+        // For ONE_TIME jobs - add Zone if found
+        if (zoneNumber) {
+          newTags.push(`Zone ${zoneNumber}`);
+          console.log(`🔍 [TAGS DEBUG] Added tag: "Zone ${zoneNumber}"`);
+        } else {
+          console.log('⚠️ [TAGS DEBUG] No zone number found in parts[2], skipping Zone tag');
+        }
+      } else {
+        // For RECURRING jobs - extract frequency and zone
+        // Extract frequency from parts[1] (e.g., "1T" -> 1, "2T" -> 2, "4T" -> 4)
+        const freqMatch = parts[1]?.match(/(\d+)/);
+        console.log('🔍 [TAGS DEBUG] Frequency match result:', freqMatch);
+        if (freqMatch) {
+          const x = parseInt(freqMatch[1]);
+          console.log('🔍 [TAGS DEBUG] Extracted frequency number:', x);
+          const freq =
+            x === 1 ? 'Monthly' : x === 2 ? 'Bi-Weekly' : x === 4 ? 'Weekly' : 'Other';
+          newTags.push(freq);
+          console.log(`🔍 [TAGS DEBUG] Added tag: "${freq}"`);
+        } else {
+          console.log('⚠️ [TAGS DEBUG] No frequency match found in parts[1]:', parts[1]);
+          const lowerTitle = title.toLowerCase();
+          if (lowerTitle.includes('bi-weekly') || lowerTitle.includes('biweekly')) {
+            newTags.push('Bi-Weekly');
+            console.log('🔍 [TAGS DEBUG] Added fallback tag: "Bi-Weekly"');
+          } else if (lowerTitle.includes('weekly')) {
+            newTags.push('Weekly');
+            console.log('🔍 [TAGS DEBUG] Added fallback tag: "Weekly"');
+          } else if (lowerTitle.includes('monthly')) {
+            newTags.push('Monthly');
+            console.log('🔍 [TAGS DEBUG] Added fallback tag: "Monthly"');
+          }
+        }
+
+        if (zoneNumber) {
+          newTags.push(`Zone ${zoneNumber}`);
+          console.log(`🔍 [TAGS DEBUG] Added tag: "Zone ${zoneNumber}"`);
+        } else {
+          const zoneMatchAny = title.match(/Zone\s+(\d+)/i);
+          if (zoneMatchAny) {
+            newTags.push(`Zone ${zoneMatchAny[1]}`);
+            console.log(`🔍 [TAGS DEBUG] Added fallback tag: "Zone ${zoneMatchAny[1]}"`);
+          } else {
+            console.log('⚠️ [TAGS DEBUG] No zone number found, skipping Zone tag');
+          }
+        }
+
+        // Check for Flex/Floater
+        const lowerParts = parts.map((p) => p.toLowerCase());
+        console.log('🔍 [TAGS DEBUG] Lowercase parts for Flex check:', lowerParts);
+        if (lowerParts.some((p) => p.includes('flex') || p.includes('floater'))) {
+          newTags.push('Flex');
+          console.log('🔍 [TAGS DEBUG] Added tag: "Flex"');
+        } else {
+          console.log('⚠️ [TAGS DEBUG] No Flex/Floater found in title');
+        }
       }
     } else {
-      // For RECURRING jobs
-      newTags.push('Recurring');
-
-      // Extract frequency from parts[1] (e.g., "1T" -> 1, "2T" -> 2, "4T" -> 4)
-      const freqMatch = parts[1]?.match(/(\d+)/);
-      if (freqMatch) {
-        const x = parseInt(freqMatch[1]);
-        const freq =
-          x === 1 ? 'Monthly' : x === 2 ? 'Bi-Weekly' : x === 4 ? 'Weekly' : 'Other';
-        newTags.push(freq);
-      }
-
-      if (zoneNumber) {
-        newTags.push(`Zone ${zoneNumber}`);
-      }
-
-      // Check for Flex/Floater
-      const lowerParts = parts.map((p) => p.toLowerCase());
-      if (lowerParts.some((p) => p.includes('flex') || p.includes('floater'))) {
-        newTags.push('Flex');
+      console.log('⚠️ [TAGS DEBUG] Title format doesn\'t have 3+ parts, only base tag added');
+      // Still try to extract zone from entire title if format is different
+      if (jobType === 'ONE_OFF' || jobType === 'ONE_TIME') {
+        const zoneMatch = title.match(/Zone\s+(\d+)/i);
+        if (zoneMatch) {
+          newTags.push(`Zone ${zoneMatch[1]}`);
+          console.log(`🔍 [TAGS DEBUG] Found Zone in title, added: "Zone ${zoneMatch[1]}"`);
+        }
+      } else {
+        // For RECURRING, try to find Flex/Floater in entire title
+        const lowerTitle = title.toLowerCase();
+        if (lowerTitle.includes('flex') || lowerTitle.includes('floater')) {
+          newTags.push('Flex');
+          console.log('🔍 [TAGS DEBUG] Found Flex/Floater in title, added: "Flex"');
+        }
       }
     }
 
+    console.log('🔍 [TAGS DEBUG] Final generated tags:', newTags);
     return newTags;
+  }
+
+  private getCustomFieldByLabel(fields: any[], label: string): string {
+    const normalize = (val: string) => (val || '').trim().toLowerCase();
+    const match = (fields || []).find((f) => normalize(f?.label) === normalize(label));
+    if (!match) return '';
+
+    if (match.valueText !== undefined) return match.valueText || '';
+    if (match.valueNumeric !== undefined) return String(match.valueNumeric ?? '');
+    if (match.valueDropdown !== undefined) return match.valueDropdown || '';
+    if (match.valueArea) {
+      const { length, width } = match.valueArea;
+      return [length, width].filter((v) => v !== undefined && v !== null).join('x');
+    }
+    if (match.valueLink) {
+      const { text, url } = match.valueLink;
+      return [text, url].filter(Boolean).join(' ');
+    }
+    return '';
+  }
+
+  private normalizeFrequencyTag(value: string): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const lower = raw.toLowerCase();
+
+    if (lower.includes('monthly') || lower === '1x' || lower === '1t' || lower === '1') return 'Monthly';
+    if (lower.includes('bi-weekly') || lower.includes('biweekly') || lower === '2x' || lower === '2t' || lower === '2') return 'Bi-Weekly';
+    if (lower.includes('weekly') || lower === '4x' || lower === '4t' || lower === '4') return 'Weekly';
+
+    const numMatch = lower.match(/(\d+)/);
+    if (numMatch) {
+      const x = parseInt(numMatch[1], 10);
+      return x === 1 ? 'Monthly' : x === 2 ? 'Bi-Weekly' : x === 4 ? 'Weekly' : 'Other';
+    }
+
+    return 'Other';
   }
 
   async findAll(limit: number = 100, skip: number = 0) {

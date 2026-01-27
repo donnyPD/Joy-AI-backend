@@ -67,15 +67,17 @@ export class QuotesService {
         create: quoteData,
       });
 
-      // Sync tags from client to tags table
       const client = jobberQuote.client;
-      if (client?.id && client?.tags?.nodes?.length > 0) {
-        const tags = client.tags.nodes.map((tag: any) => ({
-          id: tag.id,
-          label: tag.label,
-        }));
-        await this.tagsService.syncTagsToClient(client.id, tags).catch((error) => {
-          this.logger.warn('Failed to sync tags (non-critical):', error.message);
+
+      // PULL 1: Generate and sync tags from quote data (City, Referred by, New Lead)
+      if (client?.id) {
+        await this.generateAndSyncTagsFromQuote(
+          quoteData,
+          client.id,
+          client.emails?.[0]?.address || '',
+          client,
+        ).catch((error) => {
+          this.logger.warn('Failed to generate/sync quote tags (non-critical):', error.message);
         });
       }
 
@@ -116,17 +118,7 @@ export class QuotesService {
         create: quoteData,
       });
 
-      // Sync tags from client to tags table
       const client = jobberQuote.client;
-      if (client?.id && client?.tags?.nodes?.length > 0) {
-        const tags = client.tags.nodes.map((tag: any) => ({
-          id: tag.id,
-          label: tag.label,
-        }));
-        await this.tagsService.syncTagsToClient(client.id, tags).catch((error) => {
-          this.logger.warn('Failed to sync tags (non-critical):', error.message);
-        });
-      }
 
       this.logger.log(`✅ Quote updated: ${quote.jId}`);
       return quote;
@@ -313,6 +305,84 @@ export class QuotesService {
       sentTo: sentTo || null,
       sentByUser: salespersonName || null,
     };
+  }
+
+  /**
+   * PULL 1: Generate and sync tags from quote data
+   * Tags to generate:
+   * - City (from contact info)
+   * - Referred by (from job title)
+   * - "New Lead" (hardcoded)
+   */
+  private async generateAndSyncTagsFromQuote(
+    quoteData: any,
+    clientJId: string,
+    clientEmail: string,
+    client: any,
+  ) {
+    console.log(
+      `🔍 [QUOTE TAGS DEBUG] Starting generateAndSyncTagsFromQuote for client: ${clientJId}, email: ${clientEmail}`,
+    );
+    try {
+      const newTags: string[] = [];
+
+      const billingCity = client?.billingAddress?.city || '';
+      const serviceCity = quoteData.serviceCity || '';
+      const cityTag = billingCity || serviceCity;
+
+      // TAG 1: City (from contact info)
+      if (cityTag) {
+        newTags.push(cityTag);
+        console.log(`🔍 [QUOTE TAGS DEBUG] Added City tag: "${cityTag}"`);
+      }
+
+      const referredByFromTitle = this.extractReferredByFromTitle(quoteData.title);
+      const referredByTag = referredByFromTitle || '';
+
+      // TAG 2: Referred by (from job title)
+      if (referredByTag) {
+        newTags.push(referredByTag);
+        console.log(`🔍 [QUOTE TAGS DEBUG] Added Referred by tag: "${referredByTag}"`);
+      }
+
+      // TAG 3: "New Lead" (hardcoded)
+      newTags.push('New Lead');
+      console.log(`🔍 [QUOTE TAGS DEBUG] Added "New Lead" tag (hardcoded)`);
+
+      if (newTags.length === 0) {
+        console.log('⚠️ [QUOTE TAGS DEBUG] No tags to generate');
+        return;
+      }
+
+      const displayName =
+        [client?.firstName, client?.lastName].filter(Boolean).join(' ') ||
+        client?.displayName ||
+        '';
+      const mainPhones = client?.phones?.map((p: any) => p?.number).filter(Boolean).join(', ') || '';
+      const emails = client?.emails?.map((e: any) => e?.address).filter(Boolean).join(', ') || clientEmail || '';
+
+      await this.tagsService.upsertTagsDb({
+        clientJId,
+        displayName,
+        mainPhones,
+        emails,
+        createdDate: quoteData.createdAt,
+        tags: newTags,
+      });
+
+      console.log(`✅ [QUOTE TAGS DEBUG] Tags generated and synced for quote: ${quoteData.jId}`);
+      this.logger.log(`✅ Quote tags generated and synced for quote: ${quoteData.jId}`);
+    } catch (error) {
+      console.error('[QUOTE TAGS DEBUG] ❌ Failed to generate/sync quote tags (non-critical):', error.message);
+      this.logger.warn('Failed to generate/sync quote tags (non-critical):', error.message);
+    }
+  }
+
+  private extractReferredByFromTitle(title?: string): string {
+    if (!title) return '';
+    const match = title.match(/referred\s*by\s*[:\-]?\s*([^|]+)/i);
+    if (!match) return '';
+    return (match[1] || '').trim();
   }
 
   async findAll(limit: number = 100, skip: number = 0) {

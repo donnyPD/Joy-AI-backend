@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS "stripe_subscriptions" (
 CREATE UNIQUE INDEX IF NOT EXISTS "stripe_subscriptions_stripeSubscriptionId_key"
 ON "stripe_subscriptions"("stripeSubscriptionId");
 
-ALTER TABLE "stripe_subscriptions"
-ADD CONSTRAINT "stripe_subscriptions_userId_fkey"
-FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'stripe_subscriptions_userId_fkey'
+  ) THEN
+    ALTER TABLE "stripe_subscriptions"
+    ADD CONSTRAINT "stripe_subscriptions_userId_fkey"
+    FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;
