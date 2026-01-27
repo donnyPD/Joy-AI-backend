@@ -22,7 +22,7 @@ export class InventoryPurchasesService {
       // If year is provided, filter by year in purchaseDate (MM/DD/YYYY format)
       // Parse the date string to extract the year segment explicitly to avoid false positives
       if (year !== undefined) {
-        const numericYear = typeof year === 'number' ? year : parseInt(year.toString(), 10);
+        const numericYear = year;
         return purchases.filter((p) => {
           const dateStr = p.purchaseDate;
           if (!dateStr) return false;

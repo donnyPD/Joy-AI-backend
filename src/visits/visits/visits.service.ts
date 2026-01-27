@@ -55,7 +55,7 @@ export class VisitsService {
 
       const visitData = this.transformJobberData(jobberVisit);
 
-      const visit = await this.prisma.visit.upsert({
+      const visit = await (this.prisma as any).visit.upsert({
         where: { jId: visitData.jId },
         update: visitData,
         create: visitData,
@@ -88,7 +88,7 @@ export class VisitsService {
 
       const visitData = this.transformJobberData(jobberVisit);
 
-      const visit = await this.prisma.visit.upsert({
+      const visit = await (this.prisma as any).visit.upsert({
         where: { jId: visitData.jId },
         update: visitData,
         create: visitData,
@@ -111,7 +111,7 @@ export class VisitsService {
 
       this.logger.log(`Processing VISIT_DESTROY for: ${visitId}`);
 
-      await this.prisma.visit.deleteMany({
+      await (this.prisma as any).visit.deleteMany({
         where: { jId: visitId },
       });
 
@@ -158,7 +158,7 @@ export class VisitsService {
         visitData.visitCompletedDate = formatDate(new Date().toISOString());
       }
 
-      const visit = await this.prisma.visit.upsert({
+      const visit = await (this.prisma as any).visit.upsert({
         where: { jId: visitData.jId },
         update: visitData,
         create: visitData,
@@ -174,7 +174,7 @@ export class VisitsService {
 
   async findAll(limit: number = 100, skip: number = 0) {
     try {
-      const visits = await this.prisma.visit.findMany({
+      const visits = await (this.prisma as any).visit.findMany({
         take: limit,
         skip: skip,
         orderBy: { dbCreatedAt: 'desc' },
@@ -188,7 +188,7 @@ export class VisitsService {
 
   async findOne(jId: string) {
     try {
-      const visit = await this.prisma.visit.findUnique({
+      const visit = await (this.prisma as any).visit.findUnique({
         where: { jId },
       });
       return visit;
