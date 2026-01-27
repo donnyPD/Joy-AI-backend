@@ -234,17 +234,46 @@ export class AuthService {
     userId: string,
     accessToken: string,
     accountId: string,
-    refreshToken?: string,
+    refreshToken?: string | null,
     expiresAt?: Date,
   ) {
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        jobberAccessToken: accessToken,
-        jobberAccountId: accountId,
-        jobberRefreshToken: refreshToken,
-        jobberTokenExpiresAt: expiresAt,
-      },
+    // Build update data - only include refreshToken if it's explicitly provided
+    const updateData: any = {
+      jobberAccessToken: accessToken,
+      jobberAccountId: accountId,
+      jobberTokenExpiresAt: expiresAt,
+    };
+
+    // Only update refresh token if explicitly provided (not undefined)
+    // If null is passed, it means we want to clear it
+    // If undefined is passed, we keep the existing value
+    if (refreshToken !== undefined) {
+      updateData.jobberRefreshToken = refreshToken;
+    }
+
+    // Ensure only one user is linked to a Jobber account at a time.
+    // If another user already has this accountId, clear their tokens so webhooks
+    // resolve to the most recently connected user.
+    return this.prisma.$transaction(async (tx) => {
+      if (accountId) {
+        await tx.user.updateMany({
+          where: {
+            jobberAccountId: accountId,
+            NOT: { id: userId },
+          },
+          data: {
+            jobberAccessToken: null,
+            jobberRefreshToken: null,
+            jobberTokenExpiresAt: null,
+            jobberAccountId: null,
+          },
+        });
+      }
+
+      return tx.user.update({
+        where: { id: userId },
+        data: updateData,
+      });
     });
   }
 
@@ -277,6 +306,7 @@ export class AuthService {
   async getUserByAccountId(accountId: string) {
     return this.prisma.user.findFirst({
       where: { jobberAccountId: accountId },
+      orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
         email: true,

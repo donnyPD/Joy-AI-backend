@@ -85,6 +85,7 @@ model Client {
   isCompany                    Boolean   @default(false)
   displayName                  String?
   companyName                  String?
+  title                        String?
   firstName                    String?
   lastName                     String?
   email                        String?
@@ -275,6 +276,8 @@ model Job {
   billingCity     String?
   billingProvince String?
   billingZip      String?
+  leadSource      String?
+  onlineBooking   String?
 
   // Dates
   createdAt         DateTime?
@@ -301,6 +304,15 @@ model Job {
   // Invoices
   numberOfInvoices String? // Comma-separated invoice numbers
   invoicesJson     String? // Complete invoices array as JSON
+  expensesTotal    String?
+  timeTracked      String?
+  labourCostTotal  String?
+  lineItemCostTotal String?
+  totalCosts       String?
+  quoteDiscount    String?
+  totalRevenue     String?
+  profit           String?
+  profitPercent    String?
 
   // Quote
   quoteNumber String?
@@ -338,6 +350,7 @@ model Job {
   trashCanInventory      String?
   changeSheets           String?
   cleaningTech           String?
+  replied                String?
 
   // JSON Backups (Complete data)
   customFieldsJson String? // All custom fields as JSON
@@ -358,6 +371,245 @@ model Job {
   @@index([jobType])
   @@index([jobStatus])
   @@map("jobs")
+}
+
+model Invoice {
+  id          String  @id @default(uuid())
+  jId         String  @unique // Jobber Invoice ID (EncodedId)
+  invoiceNumber String?
+  
+  // Client Info (from invoice.client)
+  clientJId   String?
+  clientName  String?
+  clientEmail String?
+  clientPhone String?
+  
+  // Property Info (from invoice.client.properties[0])
+  servicePropertyName String?
+  serviceStreet       String?
+  serviceCity         String?
+  serviceProvince     String?
+  serviceZip          String?
+  serviceCountry      String?
+  
+  // Billing Address
+  billingStreet   String?
+  billingCity     String?
+  billingProvince String?
+  billingZip      String?
+  
+  // Invoice Basic Info
+  subject     String?
+  status      String? // invoiceStatus: draft, issued, paid, etc.
+  salesperson String?
+  
+  // Dates
+  createdDate String? // yyyy-MM-dd
+  issuedDate  String? // yyyy-MM-dd
+  dueDate     String? // yyyy-MM-dd
+  
+  // Financial Info
+  total       String?
+  balance     String?
+  preTaxTotal String?
+  tip         String?
+  taxPercent  String?
+  taxAmount   String?
+  deposit     String?
+  discount    String?
+  
+  // Line Items
+  lineItemsJson String? // Complete lineItems array as JSON
+  lineItems     String? // Formatted string for display
+  
+  // Job Numbers
+  jobNumbers String? // Comma-separated
+  
+  // Custom Fields (Label-based mapping from workflow)
+  birthdayMonth          String?
+  frequency              String?
+  typeOfProperty         String?
+  parkingDetails         String?
+  squareFoot             String?
+  exactSqFt              String?
+  preferredTimeOfContact String?
+  zone                   String?
+  cleaningTech           String?
+  referredBy             String?
+  
+  // Additional fields from workflow
+  leadSource         String?
+  sentTo             String?
+  lateBy             String?
+  markedPaidDate     String?
+  daysToPaid         String?
+  lastContacted      String?
+  visitsAssignedTo   String?
+  cleaningTechAssigned String?
+  viewedInClientHub  String?
+  
+  // JSON Backups (Complete data)
+  customFieldsJson String? // All custom fields as JSON
+  clientJson       String? // Complete client object as JSON
+  propertyJson     String? // Complete property object as JSON
+  amountsJson      String? // Complete amounts object as JSON
+  paymentRecordsJson String? // Payment records as JSON
+  
+  // Timestamps
+  dbCreatedAt DateTime @default(now())
+  dbUpdatedAt DateTime @updatedAt
+  
+  // Indexes
+  @@index([clientJId])
+  @@index([invoiceNumber])
+  @@index([status])
+  @@map("invoices")
+}
+
+model Visit {
+  id          String  @id @default(uuid())
+  jId         String  @unique // Jobber Visit ID (EncodedId)
+  
+  // Visit Basic Info
+  visitTitle  String?
+  visitStatus String?
+  instructions String?
+  
+  // Dates & Times
+  date        String? // yyyy-MM-dd from createdAt
+  times       String?
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime?
+  visitCompletedDate String? // yyyy-MM-dd
+  
+  // Job Info
+  jobJId      String?
+  jobNumber   String?
+  jobType     String?
+  jobStatus   String?
+  
+  // Client Info (from visit.job.client)
+  clientJId   String?
+  clientName  String?
+  clientEmail String?
+  clientPhone String?
+  
+  // Property Info (from visit.job.property)
+  servicePropertyName String?
+  serviceStreet       String?
+  serviceCity         String?
+  serviceProvince     String?
+  serviceZip          String?
+  serviceCountry      String?
+  
+  // Assigned Users
+  assignedTo  String? // First assigned user name
+  
+  // Line Items
+  lineItemsJson String? // Complete lineItems array as JSON
+  lineItems     String? // Formatted string for display
+  
+  // Financial Info
+  oneOffJob   String? // Total if jobType is ONE_OFF
+  visitBased  String?
+  scheduleDuration String?
+  timeTracked String?
+  
+  // Custom Fields (from visit.job.customFields)
+  typeOfProperty         String?
+  frequency              String?
+  referredBy             String?
+  birthdayMonth          String?
+  typeOfCleaning         String?
+  hours                  String?
+  cleaningInstructions   String?
+  howToGetInTheHouse     String?
+  detailToGetInTheHouse  String?
+  cleanInsideOfTheStove  String?
+  cleanInsideOfTheFridge String?
+  windowsToBeCleaned     String?
+  glassDoorsToBeCleaned  String?
+  typerOfProductsToUse   String?
+  squareFoot             String?
+  exactSqFt              String?
+  zone                   String?
+  parkingDetails          String?
+  responsibidProfile      String?
+  preferredTimeOfContact String?
+  additionalInstructions String?
+  pets                   String?
+  clientsProductsNotes   String?
+  trashCanInventory      String?
+  changeSheets           String?
+  cleaningTech           String?
+  
+  // JSON Backups (Complete data)
+  customFieldsJson String? // All custom fields as JSON
+  clientJson       String? // Complete client object as JSON
+  propertyJson     String? // Complete property object as JSON
+  jobJson          String? // Complete job object as JSON
+  assignedUsersJson String? // Complete assignedUsers array as JSON
+  lineItemsFullJson String? // Complete lineItems array as JSON
+  
+  // Timestamps
+  dbCreatedAt DateTime @default(now())
+  dbUpdatedAt DateTime @updatedAt
+  
+  // Indexes
+  @@index([jobJId])
+  @@index([jobNumber])
+  @@index([clientJId])
+  @@index([visitStatus])
+  @@index([date])
+  @@map("visits")
+}
+
+model Timesheet {
+  id              String   @id @default(uuid())
+  jId             String   @unique // Jobber TimeSheetEntry ID (EncodedId)
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  startAt         DateTime?
+  endAt           DateTime?
+  durationSeconds String?
+  hours           String?
+  note            String?
+
+  // Job Info
+  jobJId    String?
+  jobNumber String?
+  jobTitle  String?
+
+  // Client Info
+  clientJId  String?
+  clientName String?
+
+  // User Info (who worked)
+  userJId  String?
+  userName String?
+
+  // Display Fields
+  workingOn String?
+  date      String? // dd/MM/yyyy
+  startTime String? // HH:mm
+  endTime   String? // HH:mm
+
+  // JSON Backups
+  timeSheetJson String?
+  jobJson       String?
+  clientJson    String?
+  userJson      String?
+
+  // Timestamps
+  dbCreatedAt DateTime @default(now())
+  dbUpdatedAt DateTime @updatedAt
+
+  @@index([jobJId])
+  @@index([clientJId])
+  @@index([userJId])
+  @@index([jobNumber])
+  @@map("timesheets")
 }
 
 model TeamMember {
