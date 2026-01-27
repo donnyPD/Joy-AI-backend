@@ -40,9 +40,7 @@ export class TagsService {
       const mergedTags = this.mergeTagsCaseInsensitive(existingTags, normalizedTags);
       const mergedTagsString = mergedTags.join(', ');
 
-      const createdDateValue =
-        existing?.createdDate ||
-        (createdDate ? new Date(createdDate as any) : undefined);
+      const createdDateValue = existing?.createdDate || this.safeParseDate(createdDate);
 
       if (existing) {
         await this.prisma.tagsDb.update({
@@ -122,6 +120,15 @@ export class TagsService {
     return this.prisma.tag.findUnique({
       where: { jId },
     });
+  }
+
+  private safeParseDate(value?: Date | string | null): Date | undefined {
+    if (!value) return undefined;
+    if (value instanceof Date) {
+      return isNaN(value.getTime()) ? undefined : value;
+    }
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
   private mergeTagsCaseInsensitive(existing: string[], incoming: string[]) {

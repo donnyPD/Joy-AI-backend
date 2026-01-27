@@ -349,11 +349,6 @@ export class QuotesService {
       newTags.push('New Lead');
       console.log(`🔍 [QUOTE TAGS DEBUG] Added "New Lead" tag (hardcoded)`);
 
-      if (newTags.length === 0) {
-        console.log('⚠️ [QUOTE TAGS DEBUG] No tags to generate');
-        return;
-      }
-
       const displayName =
         [client?.firstName, client?.lastName].filter(Boolean).join(' ') ||
         client?.displayName ||

@@ -256,29 +256,6 @@ export class JobsService {
   }
 
   private transformJobberData(jobberJob: any) {
-    // Helper: Normalize label for matching
-    const normalizeLabel = (label: string) => label?.trim().toLowerCase() || '';
-
-    // Helper: Extract custom field value by label
-    const getCustomFieldByLabel = (fields: any[], label: string): string => {
-      const target = normalizeLabel(label);
-      const match = (fields || []).find((f) => normalizeLabel(f?.label) === target);
-      if (!match) return '';
-
-      if (match.valueText !== undefined) return match.valueText || '';
-      if (match.valueNumeric !== undefined) return String(match.valueNumeric ?? '');
-      if (match.valueDropdown !== undefined) return match.valueDropdown || '';
-      if (match.valueArea) {
-        const { length, width } = match.valueArea;
-        return [length, width].filter((v) => v !== undefined && v !== null).join('x');
-      }
-      if (match.valueLink) {
-        const { text, url } = match.valueLink;
-        return [text, url].filter(Boolean).join(' ');
-      }
-      return '';
-    };
-
     // Client info
     const client = jobberJob.client || {};
     const clientName = [client.firstName, client.lastName].filter(Boolean).join(' ') || '';
@@ -381,10 +358,10 @@ export class JobsService {
       billingProvince: clientBilling.province || propertyAddress.province || '',
       billingZip: clientBilling.postalCode || propertyAddress.postalCode || '',
       leadSource:
-        getCustomFieldByLabel(customFields, 'Lead Source') ||
-        getCustomFieldByLabel(clientCustomFields, 'Lead Source') ||
+        this.getCustomFieldByLabel(customFields, 'Lead Source') ||
+        this.getCustomFieldByLabel(clientCustomFields, 'Lead Source') ||
         '',
-      onlineBooking: getCustomFieldByLabel(customFields, 'Online Booking') || '',
+      onlineBooking: this.getCustomFieldByLabel(customFields, 'Online Booking') || '',
 
       createdAt: jobberJob.createdAt ? new Date(jobberJob.createdAt) : null,
       startAt: jobberJob.startAt ? new Date(jobberJob.startAt) : null,
@@ -426,31 +403,50 @@ export class JobsService {
       additionalInstructions: jobberJob.instructions || '', // Same as instructions for now
 
       // Custom Fields (Label-based mapping)
-      typeOfProperty: getCustomFieldByLabel(customFields, 'Type of Property'),
-      frequency: getCustomFieldByLabel(customFields, 'Frequency'),
-      referredBy: getCustomFieldByLabel(customFields, 'Referred By'),
-      birthdayMonth: getCustomFieldByLabel(customFields, 'Birthday Month'),
-      typeOfCleaning: getCustomFieldByLabel(customFields, 'Type of Cleaning'),
-      hours: getCustomFieldByLabel(customFields, 'Hours'),
-      cleaningInstructions: getCustomFieldByLabel(customFields, 'Cleaning Instructions'),
-      howToGetInTheHouse: getCustomFieldByLabel(customFields, 'How to get in the house'),
-      detailToGetInTheHouse: getCustomFieldByLabel(customFields, 'Detail to get in the house') || getCustomFieldByLabel(customFields, 'Details to get in the house'),
-      cleanInsideOfTheStove: getCustomFieldByLabel(customFields, 'Clean inside of the stove'),
-      cleanInsideOfTheFridge: getCustomFieldByLabel(customFields, 'Clean inside of the fridge'),
-      windowsToBeCleaned: getCustomFieldByLabel(customFields, 'Windows to be cleaned'),
-      glassDoorsToBeCleaned: getCustomFieldByLabel(customFields, 'Glass doors to be cleaned'),
-      typerOfProductsToUse: getCustomFieldByLabel(customFields, 'Typer of products to use') || getCustomFieldByLabel(customFields, 'typer of products to use'),
-      squareFoot: getCustomFieldByLabel(customFields, 'Square Foot'),
-      exactSqFt: getCustomFieldByLabel(customFields, 'Exact SqFt') || getCustomFieldByLabel(customFields, 'Exact sqft'),
-      zone: getCustomFieldByLabel(customFields, 'Zone'),
-      parkingDetails: getCustomFieldByLabel(customFields, 'Parking details'),
-      responsibidProfile: getCustomFieldByLabel(customFields, 'ResponsiBid Profile') || getCustomFieldByLabel(customFields, 'responsibid profile'),
-      preferredTimeOfContact: getCustomFieldByLabel(customFields, 'Preferred Time of Contact') || getCustomFieldByLabel(customFields, 'Preferred time of contact'),
-      pets: getCustomFieldByLabel(customFields, 'Pets'),
-      clientsProductsNotes: getCustomFieldByLabel(customFields, 'Clients Products Notes') || getCustomFieldByLabel(customFields, 'clients products notes'),
-      trashCanInventory: getCustomFieldByLabel(customFields, 'Trash can Inventory') || getCustomFieldByLabel(customFields, 'trash can inventory'),
-      changeSheets: getCustomFieldByLabel(customFields, 'Change Sheets') || getCustomFieldByLabel(customFields, 'change sheets') || getCustomFieldByLabel(customFields, 'chnage sheets'),
-      cleaningTech: getCustomFieldByLabel(customFields, 'Cleaning Tech') || getCustomFieldByLabel(customFields, 'cleaning tech'),
+      typeOfProperty: this.getCustomFieldByLabel(customFields, 'Type of Property'),
+      frequency: this.getCustomFieldByLabel(customFields, 'Frequency'),
+      referredBy: this.getCustomFieldByLabel(customFields, 'Referred By'),
+      birthdayMonth: this.getCustomFieldByLabel(customFields, 'Birthday Month'),
+      typeOfCleaning: this.getCustomFieldByLabel(customFields, 'Type of Cleaning'),
+      hours: this.getCustomFieldByLabel(customFields, 'Hours'),
+      cleaningInstructions: this.getCustomFieldByLabel(customFields, 'Cleaning Instructions'),
+      howToGetInTheHouse: this.getCustomFieldByLabel(customFields, 'How to get in the house'),
+      detailToGetInTheHouse:
+        this.getCustomFieldByLabel(customFields, 'Detail to get in the house') ||
+        this.getCustomFieldByLabel(customFields, 'Details to get in the house'),
+      cleanInsideOfTheStove: this.getCustomFieldByLabel(customFields, 'Clean inside of the stove'),
+      cleanInsideOfTheFridge: this.getCustomFieldByLabel(customFields, 'Clean inside of the fridge'),
+      windowsToBeCleaned: this.getCustomFieldByLabel(customFields, 'Windows to be cleaned'),
+      glassDoorsToBeCleaned: this.getCustomFieldByLabel(customFields, 'Glass doors to be cleaned'),
+      typerOfProductsToUse:
+        this.getCustomFieldByLabel(customFields, 'Typer of products to use') ||
+        this.getCustomFieldByLabel(customFields, 'typer of products to use'),
+      squareFoot: this.getCustomFieldByLabel(customFields, 'Square Foot'),
+      exactSqFt:
+        this.getCustomFieldByLabel(customFields, 'Exact SqFt') ||
+        this.getCustomFieldByLabel(customFields, 'Exact sqft'),
+      zone: this.getCustomFieldByLabel(customFields, 'Zone'),
+      parkingDetails: this.getCustomFieldByLabel(customFields, 'Parking details'),
+      responsibidProfile:
+        this.getCustomFieldByLabel(customFields, 'ResponsiBid Profile') ||
+        this.getCustomFieldByLabel(customFields, 'responsibid profile'),
+      preferredTimeOfContact:
+        this.getCustomFieldByLabel(customFields, 'Preferred Time of Contact') ||
+        this.getCustomFieldByLabel(customFields, 'Preferred time of contact'),
+      pets: this.getCustomFieldByLabel(customFields, 'Pets'),
+      clientsProductsNotes:
+        this.getCustomFieldByLabel(customFields, 'Clients Products Notes') ||
+        this.getCustomFieldByLabel(customFields, 'clients products notes'),
+      trashCanInventory:
+        this.getCustomFieldByLabel(customFields, 'Trash can Inventory') ||
+        this.getCustomFieldByLabel(customFields, 'trash can inventory'),
+      changeSheets:
+        this.getCustomFieldByLabel(customFields, 'Change Sheets') ||
+        this.getCustomFieldByLabel(customFields, 'change sheets') ||
+        this.getCustomFieldByLabel(customFields, 'chnage sheets'),
+      cleaningTech:
+        this.getCustomFieldByLabel(customFields, 'Cleaning Tech') ||
+        this.getCustomFieldByLabel(customFields, 'cleaning tech'),
       replied: '',
 
       // JSON Backups

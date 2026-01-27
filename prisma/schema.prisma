@@ -237,7 +237,7 @@ model Quote {
 
 model TagsDb {
   id          String   @id @default(uuid())
-  clientJId   String?  @unique
+  clientJId   String   @unique
   createdDate DateTime?
   displayName String?
   mainPhones  String?
