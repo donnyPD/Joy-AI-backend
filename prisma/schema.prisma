@@ -16,6 +16,10 @@ model User {
   jobberTokenExpiresAt DateTime? // Token expiration time
   jobberAccountId      String? // Jobber account ID
   publicFormKey        String?  @unique @map("public_form_key")
+  defaultIdealInventory Int   @default(0) @map("default_ideal_inventory")
+  inventoryColumnDescription String? @map("inventory_column_description")
+  idealInventoryColumnDescription String? @map("ideal_inventory_column_description")
+  toBeOrderedColumnDescription String? @map("to_be_ordered_column_description")
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
@@ -789,19 +793,18 @@ model InventoryStore {
 }
 
 model InventoryFormConfig {
-  id            String   @id @default(uuid())
-  userId        String?  @map("user_id")
-  fieldName     String   @map("field_name")
-  fieldType     String   @map("field_type")
-  categoryName  String   @map("category_name")
-  isVisible     Boolean  @default(true) @map("is_visible")
-  isRequired    Boolean  @default(false) @map("is_required")
-  dropdownMin   Int      @default(1) @map("dropdown_min")
-  dropdownMax   Int      @default(5) @map("dropdown_max")
-  dropdownMaxW2 Int      @default(5) @map("dropdown_max_w2")
-  displayOrder  Int      @default(0) @map("display_order")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  userId           String?  @map("user_id")
+  fieldName        String   @map("field_name")
+  fieldType        String   @map("field_type")
+  categoryName     String   @map("category_name")
+  isVisible        Boolean  @default(true) @map("is_visible")
+  isRequired       Boolean  @default(false) @map("is_required")
+  dropdownMin      Int      @default(1) @map("dropdown_min")
+  dropdownMaxByType Json    @default("{\"1099\": 5, \"W2\": 5}") @map("dropdown_max_by_type")
+  displayOrder     Int      @default(0) @map("display_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 

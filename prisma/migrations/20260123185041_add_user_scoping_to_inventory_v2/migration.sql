@@ -41,7 +41,20 @@ BEGIN
   UPDATE "inventory_notes" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
   UPDATE "inventory_form_config" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
   UPDATE "inventory_form_submissions" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  
+  -- Handle inventory_snapshots: Delete NULL records that would create duplicates
+  -- Delete snapshots with NULL user_id if a snapshot with the same (month, year) and system_user_id already exists
+  DELETE FROM "inventory_snapshots" s1
+  WHERE s1."user_id" IS NULL
+    AND EXISTS (
+      SELECT 1 FROM "inventory_snapshots" s2
+      WHERE s2."month" = s1."month"
+        AND s2."year" = s1."year"
+        AND s2."user_id" = system_user_id
+    );
+  -- Now update remaining NULL values
   UPDATE "inventory_snapshots" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
+  
   UPDATE "inventory_technicians" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
   UPDATE "inventory_technician_purchases" SET "user_id" = system_user_id WHERE "user_id" IS NULL;
 END $$;

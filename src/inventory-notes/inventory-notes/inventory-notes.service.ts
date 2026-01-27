@@ -117,4 +117,53 @@ export class InventoryNotesService {
       throw error;
     }
   }
+
+  // Get available months from notes
+  async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
+    try {
+      const allNotes = await this.prisma.inventoryNote.findMany({
+        where: { userId },
+        select: {
+          nyTimestamp: true,
+        },
+      });
+
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const monthYearSet = new Set<string>();
+
+      for (const note of allNotes) {
+        if (!note.nyTimestamp) continue;
+
+        const dateStr = note.nyTimestamp;
+        // Parse nyTimestamp format like "Jan 15, 2024, 10:30 AM"
+        for (let i = 0; i < monthNames.length; i++) {
+          if (dateStr.includes(monthNames[i])) {
+            const yearMatch = dateStr.match(/\b(20\d{2})\b/);
+            if (yearMatch) {
+              const month = i + 1;
+              const year = parseInt(yearMatch[1], 10);
+              monthYearSet.add(`${month}-${year}`);
+            }
+            break;
+          }
+        }
+      }
+
+      const months = Array.from(monthYearSet).map((key) => {
+        const [month, year] = key.split('-').map(Number);
+        return { month, year };
+      });
+
+      // Sort in descending order (newest first)
+      months.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      return months;
+    } catch (error) {
+      this.logger.error(`Error fetching available note months: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
 }

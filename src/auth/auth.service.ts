@@ -1,6 +1,8 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { TeamMemberTypesService } from '../team-member-types/team-member-types/team-member-types.service';
+import { TeamMemberStatusesService } from '../team-member-statuses/team-member-statuses/team-member-statuses.service';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { SignUpDto } from './dto/signup.dto';
@@ -8,9 +10,13 @@ import { SignInDto } from './dto/signin.dto';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private teamMemberTypesService: TeamMemberTypesService,
+    private teamMemberStatusesService: TeamMemberStatusesService,
   ) {}
 
   private async getSubscriptionSummary(userId: string) {
@@ -28,6 +34,82 @@ export class AuthService {
         ? { planKey: subscription.planKey, status: subscription.status }
         : null,
     };
+  }
+
+  /**
+   * Creates default TeamMemberTypes and TeamMemberStatuses for a new user.
+   * Only creates records that don't already exist.
+   */
+  private async createDefaultTeamMemberOptions(userId: string): Promise<void> {
+    try {
+      // Default TeamMemberTypes
+      const defaultTypes = ['W2', '1099'];
+      for (const typeName of defaultTypes) {
+        try {
+          // Check if type already exists
+          const existing = await this.prisma.teamMemberType.findFirst({
+            where: { name: typeName, createdById: userId },
+          });
+
+          if (!existing) {
+            await this.teamMemberTypesService.create(
+              { name: typeName, isActive: true } as any,
+              userId,
+            );
+            this.logger.log(`Created default team member type: ${typeName} for user: ${userId}`);
+          } else {
+            this.logger.debug(`Team member type ${typeName} already exists for user: ${userId}`);
+          }
+        } catch (error) {
+          // Handle ConflictException (P2002) - record already exists
+          if (error.code === 'P2002' || error instanceof ConflictException) {
+            this.logger.debug(`Team member type ${typeName} already exists for user: ${userId}`);
+          } else {
+            this.logger.error(
+              `Error creating team member type ${typeName} for user ${userId}: ${error.message}`,
+              error.stack,
+            );
+          }
+        }
+      }
+
+      // Default TeamMemberStatuses
+      const defaultStatuses = ['Active', 'Dismissed', 'No Longer Working'];
+      for (const statusName of defaultStatuses) {
+        try {
+          // Check if status already exists
+          const existing = await this.prisma.teamMemberStatus.findFirst({
+            where: { name: statusName, createdById: userId },
+          });
+
+          if (!existing) {
+            await this.teamMemberStatusesService.create(
+              { name: statusName, isActive: true } as any,
+              userId,
+            );
+            this.logger.log(`Created default team member status: ${statusName} for user: ${userId}`);
+          } else {
+            this.logger.debug(`Team member status ${statusName} already exists for user: ${userId}`);
+          }
+        } catch (error) {
+          // Handle ConflictException (P2002) - record already exists
+          if (error.code === 'P2002' || error instanceof ConflictException) {
+            this.logger.debug(`Team member status ${statusName} already exists for user: ${userId}`);
+          } else {
+            this.logger.error(
+              `Error creating team member status ${statusName} for user ${userId}: ${error.message}`,
+              error.stack,
+            );
+          }
+        }
+      }
+    } catch (error) {
+      // Log error but don't throw - we don't want to fail user creation if default records fail
+      this.logger.error(
+        `Error creating default team member options for user ${userId}: ${error.message}`,
+        error.stack,
+      );
+    }
   }
 
   async signUp(signUpDto: SignUpDto) {
@@ -85,6 +167,18 @@ export class AuthService {
         createdAt: true,
       },
     });
+
+    // Create default team member types and statuses
+    // Wrap in try-catch to ensure user creation succeeds even if default records fail
+    try {
+      await this.createDefaultTeamMemberOptions(user.id);
+    } catch (error) {
+      // Log error but don't fail user creation
+      this.logger.error(
+        `Failed to create default team member options for user ${user.id}: ${error.message}`,
+        error.stack,
+      );
+    }
 
     // Generate JWT token
     const accessToken = this.jwtService.sign({

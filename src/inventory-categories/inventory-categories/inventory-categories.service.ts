@@ -1,12 +1,17 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { InventoryCategory, Prisma } from '@prisma/client';
+import { InventoryService } from '../../inventory/inventory/inventory.service';
 
 @Injectable()
 export class InventoryCategoriesService {
   private readonly logger = new Logger(InventoryCategoriesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => InventoryService))
+    private inventoryService: InventoryService,
+  ) {}
 
   // Ported from storage.ts: getAllInventoryCategories
   async findAll(userId: string): Promise<InventoryCategory[]> {
@@ -99,12 +104,20 @@ export class InventoryCategoriesService {
         throw new NotFoundException(`Inventory category with ID ${id} not found`);
       }
 
+      // Check if category has items
+      const items = await this.inventoryService.findByCategory(id, userId);
+      if (items.length > 0) {
+        throw new BadRequestException(
+          `Cannot delete category "${existing.name}". Please delete all items in this category first.`
+        );
+      }
+
       await this.prisma.inventoryCategory.delete({
         where: { id },
       });
       this.logger.log(`Deleted inventory category: ${id}`);
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (error instanceof NotFoundException || error instanceof BadRequestException) {
         throw error;
       }
       if (error.code === 'P2025') {

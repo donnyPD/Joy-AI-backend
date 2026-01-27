@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -27,6 +27,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Controller()
 export class ApiController {
+  private readonly logger = new Logger(ApiController.name);
+
   constructor(
     private clientsService: ClientsService,
     private teamMembersService: TeamMembersService,
@@ -682,6 +684,7 @@ export class ApiController {
       
       const purchases = await this.inventoryPurchasesService.findAllByTeamMember(
         technician.id,
+        userId,
         yearNum,
       );
       
@@ -876,6 +879,7 @@ export class ApiController {
         totalInventory,
         pricePerUnit,
         threshold,
+        idealTotalInventory,
       } = data;
 
       if (!name || !type || !categoryId) {
@@ -903,6 +907,7 @@ export class ApiController {
         totalInventory: totalInventory || 0,
         pricePerUnit: pricePerUnit || '',
         threshold: threshold || 3,
+        idealTotalInventory: idealTotalInventory !== undefined ? idealTotalInventory : 0,
         rowNumber: maxRowNumber + 1,
       }, userId);
 
@@ -944,6 +949,22 @@ export class ApiController {
     } catch (error) {
       console.error('Error fetching inventory notes:', error);
       return [];
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/notes/available-months')
+  async getInventoryNotesAvailableMonths(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const months = await this.inventoryNotesService.getAvailableMonths(userId);
+      return months;
+    } catch (error) {
+      console.error('Error fetching available note months:', error);
+      throw error;
     }
   }
 
@@ -1115,6 +1136,22 @@ export class ApiController {
     } catch (error) {
       console.error('Error fetching inventory purchases:', error);
       return [];
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory/purchases/available-months')
+  async getInventoryPurchasesAvailableMonths(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const months = await this.inventoryPurchaseItemsService.getAvailableMonths(userId);
+      return months;
+    } catch (error) {
+      console.error('Error fetching available purchase months:', error);
+      throw error;
     }
   }
 
@@ -1407,6 +1444,23 @@ export class ApiController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch('inventory/technicians/purchases/:id')
+  @Put('inventory/technicians/purchases/:id')
+  async updateInventoryTechnicianPurchase(@Param('id') id: string, @Body() data: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const purchase = await this.inventoryPurchasesService.update(id, data, userId);
+      return purchase;
+    } catch (error) {
+      console.error('Error updating inventory technician purchase:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory/technicians/:id/complete-all')
   async completeAllPurchases(@Param('id') id: string, @Request() req: any, @Query('month') month?: string, @Query('year') year?: string) {
     try {
@@ -1480,6 +1534,55 @@ export class ApiController {
     } catch (error) {
       console.error('Error fetching form submissions:', error);
       return [];
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('inventory-form/submissions/available-months')
+  async getInventoryFormSubmissionsAvailableMonths(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const months = await this.inventoryFormSubmissionsService.getAvailableMonths(userId);
+      return months;
+    } catch (error) {
+      console.error('Error fetching available form submission months:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('inventory-form/submissions/:id')
+  async updateInventoryFormSubmission(@Param('id') id: string, @Body() data: any, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      const submission = await this.inventoryFormSubmissionsService.update(id, data, userId);
+      return submission;
+    } catch (error) {
+      console.error('Error updating inventory form submission:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('inventory-form/submissions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteInventoryFormSubmission(@Param('id') id: string, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+      await this.inventoryFormSubmissionsService.delete(id, userId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting inventory form submission:', error);
+      throw error;
     }
   }
 
@@ -1577,6 +1680,27 @@ export class ApiController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch('inventory-column-definitions/reorder')
+  async reorderInventoryColumnDefinitions(@Body() body: { updates: Array<{ id: string; displayOrder: number }> }, @Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new Error('User ID not found in request');
+      }
+
+      if (!Array.isArray(body.updates)) {
+        return { message: 'Updates array is required' };
+      }
+
+      const results = await this.inventoryColumnDefinitionsService.reorder(body.updates, userId);
+      return { success: true, updated: results.length };
+    } catch (error) {
+      console.error('Error reordering inventory column definitions:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('inventory-column-definitions/:id')
   async updateInventoryColumnDefinition(@Param('id') id: string, @Body() body: any, @Request() req: any) {
     try {
@@ -1614,27 +1738,6 @@ export class ApiController {
       return { success: true };
     } catch (error) {
       console.error('Error deleting inventory column definition:', error);
-      throw error;
-    }
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('inventory-column-definitions/reorder')
-  async reorderInventoryColumnDefinitions(@Body() body: { updates: Array<{ id: string; displayOrder: number }> }, @Request() req: any) {
-    try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        throw new Error('User ID not found in request');
-      }
-
-      if (!Array.isArray(body.updates)) {
-        return { message: 'Updates array is required' };
-      }
-
-      const results = await this.inventoryColumnDefinitionsService.reorder(body.updates, userId);
-      return { success: true, updated: results.length };
-    } catch (error) {
-      console.error('Error reordering inventory column definitions:', error);
       throw error;
     }
   }
@@ -1869,6 +1972,213 @@ export class ApiController {
     return { value: template.template };
   }
 
+  // Inventory Settings endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/default-ideal-inventory')
+  async getDefaultIdealInventory(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { defaultIdealInventory: true },
+      });
+      return { value: user?.defaultIdealInventory || 0 };
+    } catch (error) {
+      console.error('Error fetching default ideal inventory:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/default-ideal-inventory')
+  async updateDefaultIdealInventory(@Request() req: any, @Body() data: { value: number }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (typeof data.value !== 'number' || data.value < 0) {
+        throw new BadRequestException('Value must be a non-negative number');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { defaultIdealInventory: data.value },
+        select: { defaultIdealInventory: true },
+      });
+      return { value: user.defaultIdealInventory };
+    } catch (error) {
+      console.error('Error updating default ideal inventory:', error);
+      throw error;
+    }
+  }
+
+  // Inventory column description endpoints
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/inventory')
+  async getInventoryColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { inventoryColumnDescription: true },
+      });
+      return { value: user?.inventoryColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/inventory')
+  async updateInventoryColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { inventoryColumnDescription: data.value },
+        select: { inventoryColumnDescription: true },
+      });
+      return { value: user.inventoryColumnDescription };
+    } catch (error) {
+      console.error('Error updating inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/ideal-inventory')
+  async getIdealInventoryColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { idealInventoryColumnDescription: true },
+      });
+      return { value: user?.idealInventoryColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching ideal inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/ideal-inventory')
+  async updateIdealInventoryColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { idealInventoryColumnDescription: data.value },
+        select: { idealInventoryColumnDescription: true },
+      });
+      return { value: user.idealInventoryColumnDescription };
+    } catch (error) {
+      console.error('Error updating ideal inventory column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings/inventory/column-descriptions/to-be-ordered')
+  async getToBeOrderedColumnDescription(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { toBeOrderedColumnDescription: true },
+      });
+      return { value: user?.toBeOrderedColumnDescription || null };
+    } catch (error) {
+      console.error('Error fetching to be ordered column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings/inventory/column-descriptions/to-be-ordered')
+  async updateToBeOrderedColumnDescription(@Request() req: any, @Body() data: { value: string | null }) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+      if (data.value !== null && typeof data.value !== 'string') {
+        throw new BadRequestException('Value must be a string or null');
+      }
+      const user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { toBeOrderedColumnDescription: data.value },
+        select: { toBeOrderedColumnDescription: true },
+      });
+      return { value: user.toBeOrderedColumnDescription };
+    } catch (error) {
+      console.error('Error updating to be ordered column description:', error);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('user/public-form-key')
+  async getPublicFormKey(@Request() req: any) {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        throw new UnauthorizedException();
+      }
+
+      // Get user with publicFormKey
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { publicFormKey: true },
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Generate publicFormKey if it doesn't exist
+      let publicFormKey = user.publicFormKey;
+      if (!publicFormKey) {
+        const crypto = await import('crypto');
+        publicFormKey = crypto.randomBytes(32).toString('hex');
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { publicFormKey },
+        });
+      }
+
+      return { publicFormKey };
+    } catch (error) {
+      console.error('Error fetching public form key:', error);
+      throw error;
+    }
+  }
+
   // Public Inventory Form endpoints (no auth required)
   @Get('public/inventory-form/config')
   async getPublicInventoryFormConfig(@Query('key') key?: string) {
@@ -1895,8 +2205,9 @@ export class ApiController {
       const allCategories = await this.inventoryCategoriesService.findAll(userId);
       const allInventory = await this.inventoryService.findAll(userId);
       
-      // Get all team members (for public form, we need all team members across all users)
+      // Get team members for this user
       const allTeamMembers = await this.prisma.teamMember.findMany({
+        where: { createdById: userId },
         orderBy: { name: 'asc' },
         select: {
           id: true,
@@ -2030,6 +2341,73 @@ export class ApiController {
             }
           }
         }
+      }
+
+      // Create InventoryTechnicianPurchase record (matching Replit implementation)
+      try {
+        // Find or create inventory technician by submitter name
+        let technician = await this.inventoryTechniciansService.findByName(submitterName.trim(), userId);
+        if (!technician) {
+          technician = await this.inventoryTechniciansService.create({
+            techName: submitterName.trim(),
+          }, userId);
+        }
+
+        // Format date as ISO (YYYY-MM-DD) in America/New_York timezone
+        const nowNY = new Date().toLocaleString('en-US', {
+          timeZone: 'America/New_York',
+        });
+        const dateNY = new Date(nowNY);
+        const year = dateNY.getFullYear();
+        const month = String(dateNY.getMonth() + 1).padStart(2, '0');
+        const day = String(dateNY.getDate()).padStart(2, '0');
+        const formattedDate = `${year}-${month}-${day}`;
+
+        // Combine products and tools into items list
+        const allItemsBought: string[] = [];
+
+        if (productSelections && typeof productSelections === 'object') {
+          for (const [itemName, quantity] of Object.entries(productSelections)) {
+            if (typeof quantity === 'number' && quantity > 0) {
+              allItemsBought.push(`${itemName} (${quantity})`);
+            }
+          }
+        }
+
+        if (toolSelections && typeof toolSelections === 'object') {
+          for (const [itemName, quantity] of Object.entries(toolSelections)) {
+            if (typeof quantity === 'number' && quantity > 0) {
+              allItemsBought.push(`${itemName} (${quantity})`);
+            }
+          }
+        }
+
+        // Format as numbered list with newlines
+        const itemsRaw = allItemsBought
+          .map((item, index) => `${index + 1}. ${item}`)
+          .join('\n');
+
+        // Create purchase record if there are items
+        if (allItemsBought.length > 0) {
+          await this.inventoryTechniciansService.createTechnicianPurchase({
+            technician: { connect: { id: technician.id } },
+            purchaseDate: formattedDate,
+            itemsRaw: itemsRaw,
+            itemsParsed: {
+              products: productSelections || {},
+              tools: toolSelections || {},
+            },
+            isCompleted: false,
+          }, userId);
+
+          // Update technician's latest purchase date
+          await this.inventoryTechniciansService.update(technician.id, {
+            latestPurchaseDate: formattedDate,
+          }, userId);
+        }
+      } catch (techError) {
+        // Log error but don't fail the entire submission
+        this.logger.error('Error creating technician purchase record', techError.stack);
       }
 
       return submission;

@@ -147,4 +147,47 @@ export class InventoryPurchaseItemsService {
       throw error;
     }
   }
+
+  // Get available months from purchases
+  async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
+    try {
+      const allPurchases = await this.prisma.inventoryPurchase.findMany({
+        where: { userId } as any,
+        select: {
+          purchasedAt: true,
+        },
+      });
+
+      const monthYearSet = new Set<string>();
+      for (const purchase of allPurchases) {
+        try {
+          const purchaseDate = new Date(purchase.purchasedAt);
+          if (!isNaN(purchaseDate.getTime())) {
+            const month = purchaseDate.getMonth() + 1;
+            const year = purchaseDate.getFullYear();
+            monthYearSet.add(`${month}-${year}`);
+          }
+        } catch (error) {
+          // Skip invalid dates
+          continue;
+        }
+      }
+
+      const months = Array.from(monthYearSet).map((key) => {
+        const [month, year] = key.split('-').map(Number);
+        return { month, year };
+      });
+
+      // Sort in descending order (newest first)
+      months.sort((a, b) => {
+        if (a.year !== b.year) return b.year - a.year;
+        return b.month - a.month;
+      });
+
+      return months;
+    } catch (error) {
+      this.logger.error(`Error fetching available purchase months: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
 }
