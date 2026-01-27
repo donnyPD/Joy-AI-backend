@@ -42,29 +42,24 @@ export class TagsService {
 
       const createdDateValue = existing?.createdDate || this.safeParseDate(createdDate);
 
-      if (existing) {
-        await this.prisma.tagsDb.update({
-          where: { clientJId },
-          data: {
-            displayName: displayName || existing.displayName,
-            mainPhones: mainPhones || existing.mainPhones,
-            emails: emails || existing.emails,
-            createdDate: createdDateValue,
-            tags: mergedTagsString,
-          },
-        });
-      } else {
-        await this.prisma.tagsDb.create({
-          data: {
-            clientJId,
-            displayName: displayName || null,
-            mainPhones: mainPhones || null,
-            emails: emails || null,
-            createdDate: createdDateValue || null,
-            tags: mergedTagsString,
-          },
-        });
-      }
+      await this.prisma.tagsDb.upsert({
+        where: { clientJId },
+        create: {
+          clientJId,
+          displayName: displayName || null,
+          mainPhones: mainPhones || null,
+          emails: emails || null,
+          createdDate: createdDateValue || null,
+          tags: mergedTagsString,
+        },
+        update: {
+          displayName: displayName || existing?.displayName,
+          mainPhones: mainPhones || existing?.mainPhones,
+          emails: emails || existing?.emails,
+          createdDate: createdDateValue,
+          tags: mergedTagsString,
+        },
+      });
 
       this.logger.log(`✅ TagsDb upserted for client: ${clientJId}`);
     } catch (error) {
