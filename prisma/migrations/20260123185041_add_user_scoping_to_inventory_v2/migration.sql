@@ -80,43 +80,56 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
--- Step 5: Make columns NOT NULL and set defaults using the function
--- Update and alter inventory_categories.user_id
-ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+-- Step 5: Make columns NOT NULL and set defaults using the function (guarded)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_categories') THEN
+    ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_categories" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory.user_id
-ALTER TABLE "inventory" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory') THEN
+    ALTER TABLE "inventory" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_stores.user_id
-ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_stores') THEN
+    ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_stores" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_purchases.user_id
-ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_purchases') THEN
+    ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_notes.user_id
-ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_notes') THEN
+    ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_notes" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_form_config.user_id
-ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_form_config') THEN
+    ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_form_config" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_form_submissions.user_id
-ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_form_submissions') THEN
+    ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_form_submissions" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_snapshots.user_id
-ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_snapshots') THEN
+    ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_snapshots" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_technicians.user_id
-ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_technicians') THEN
+    ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_technicians" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
 
--- Update and alter inventory_technician_purchases.user_id
-ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET NOT NULL;
-ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_technician_purchases') THEN
+    ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET NOT NULL;
+    ALTER TABLE "inventory_technician_purchases" ALTER COLUMN "user_id" SET DEFAULT get_default_user_id();
+  END IF;
+END $$;

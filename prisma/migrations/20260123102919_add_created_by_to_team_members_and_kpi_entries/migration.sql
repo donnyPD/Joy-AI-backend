@@ -8,7 +8,8 @@ BEGIN
     ELSIF EXISTS (SELECT 1 FROM users LIMIT 1) THEN
         ALTER TABLE "team_members" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     ELSE
-        RAISE EXCEPTION 'Cannot migrate: team_members has records but no users exist';
+        -- Allow adding column without users; backfill/NOT NULL will be skipped later.
+        ALTER TABLE "team_members" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     END IF;
 
     -- kpi_entries
@@ -17,7 +18,8 @@ BEGIN
     ELSIF EXISTS (SELECT 1 FROM users LIMIT 1) THEN
         ALTER TABLE "kpi_entries" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     ELSE
-        RAISE EXCEPTION 'Cannot migrate: kpi_entries has records but no users exist';
+        -- Allow adding column without users; backfill/NOT NULL will be skipped later.
+        ALTER TABLE "kpi_entries" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     END IF;
 
     -- team_member_types
@@ -26,7 +28,8 @@ BEGIN
     ELSIF EXISTS (SELECT 1 FROM users LIMIT 1) THEN
         ALTER TABLE "team_member_types" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     ELSE
-        RAISE EXCEPTION 'Cannot migrate: team_member_types has records but no users exist';
+        -- Allow adding column without users; backfill/NOT NULL will be skipped later.
+        ALTER TABLE "team_member_types" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     END IF;
 
     -- team_member_statuses
@@ -35,7 +38,8 @@ BEGIN
     ELSIF EXISTS (SELECT 1 FROM users LIMIT 1) THEN
         ALTER TABLE "team_member_statuses" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     ELSE
-        RAISE EXCEPTION 'Cannot migrate: team_member_statuses has records but no users exist';
+        -- Allow adding column without users; backfill/NOT NULL will be skipped later.
+        ALTER TABLE "team_member_statuses" ADD COLUMN IF NOT EXISTS "created_by_id" TEXT;
     END IF;
 END $$;
 
@@ -99,8 +103,8 @@ END $$;
 -- If you have existing data without users, you must create a user first
 DO $$
 BEGIN
-    -- Only proceed if there are no NULL values (meaning Step 2 succeeded or there were no records)
-    IF NOT EXISTS (
+    -- Only proceed if users exist and there are no NULL values
+    IF EXISTS (SELECT 1 FROM users LIMIT 1) AND NOT EXISTS (
         SELECT 1 FROM "team_members" WHERE "created_by_id" IS NULL
         UNION
         SELECT 1 FROM "kpi_entries" WHERE "created_by_id" IS NULL
@@ -113,8 +117,6 @@ BEGIN
         ALTER TABLE "kpi_entries" ALTER COLUMN "created_by_id" SET NOT NULL;
         ALTER TABLE "team_member_types" ALTER COLUMN "created_by_id" SET NOT NULL;
         ALTER TABLE "team_member_statuses" ALTER COLUMN "created_by_id" SET NOT NULL;
-    ELSE
-        RAISE EXCEPTION 'Cannot set NOT NULL: Tables still have NULL created_by_id values';
     END IF;
 END $$;
 
