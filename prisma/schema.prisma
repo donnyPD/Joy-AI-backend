@@ -835,6 +835,7 @@ model InventoryFormSubmission {
   toolSelections        Json     @map("tool_selections")
   additionalNotes       String?  @map("additional_notes")
   returningEmptyGallons String?  @map("returning_empty_gallons")
+  delivered             Boolean  @default(false)
   createdAt             DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -870,6 +871,7 @@ model InventoryPurchase {
   amount      String
   quantity    Int      @default(1)
   purchasedAt String   @map("purchased_at")
+  notes       String?  @map("notes")
   createdAt   DateTime @default(now()) @map("created_at")
 
   user User?       @relation(fields: [userId], references: [id], onDelete: Cascade)

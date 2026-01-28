@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Put, Body, Param, Query, HttpCode, HttpStatus, Request, UseGuards, NotFoundException, UnauthorizedException, BadRequestException, HttpException, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ClientsService } from '../../clients/clients/clients.service';
 import { TeamMembersService } from '../../team-members/team-members/team-members.service';
@@ -780,9 +780,37 @@ export class ApiController {
         isVisibleOnForm: data.isVisibleOnForm !== undefined ? data.isVisibleOnForm : true,
       }, userId);
       return category;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating inventory category:', error);
-      throw error;
+      console.error('Error type:', error.constructor?.name);
+      console.error('Error status:', error.status);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      
+      // Re-throw HttpException (includes BadRequestException) as-is
+      if (error instanceof HttpException) {
+        console.log('Re-throwing HttpException:', error.getStatus(), error.message);
+        throw error;
+      }
+      
+      // Check if error has status 400 (BadRequestException from service)
+      // This handles cases where instanceof doesn't work across modules
+      if (error.status === 400 || error.getStatus?.() === 400) {
+        const errorMessage = error.message || error.response?.data?.message || 'Failed to create inventory category';
+        console.log('Creating BadRequestException with message:', errorMessage);
+        throw new BadRequestException(errorMessage);
+      }
+      
+      // Check if it's a Prisma unique constraint error
+      if (error.code === 'P2002') {
+        const categoryName = data.name?.trim() || 'this name';
+        console.log('Handling Prisma P2002 error for category:', categoryName);
+        throw new BadRequestException(`A category with the name "${categoryName}" already exists. Please choose a different name.`);
+      }
+      
+      // For other errors, wrap in a generic error message
+      console.log('Wrapping error in BadRequestException:', error.message);
+      throw new BadRequestException(error.message || 'Failed to create inventory category');
     }
   }
 
@@ -1168,6 +1196,15 @@ export class ApiController {
         return { error: 'Purchases array is required' };
       }
 
+      // Check for duplicate orderId
+      const orderId = purchases[0]?.orderId;
+      if (orderId && !orderId.startsWith('LEGACY-')) {
+        const exists = await this.inventoryPurchaseItemsService.orderIdExists(orderId, userId);
+        if (exists) {
+          throw new BadRequestException(`An order with this ID already exists.`);
+        }
+      }
+
       // Transform purchases to Prisma format
       const purchaseData = purchases.map((p: any) => ({
         orderId: p.orderId || `LEGACY-${Date.now()}-${Math.random()}`,
@@ -1176,6 +1213,7 @@ export class ApiController {
         amount: p.amount,
         quantity: p.quantity || 1,
         purchasedAt: p.purchasedAt,
+        notes: p.notes || null,
         ...(p.itemId ? { item: { connect: { id: p.itemId } } } : {}),
       }));
 
