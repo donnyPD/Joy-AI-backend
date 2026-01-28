@@ -235,6 +235,21 @@ model Quote {
   @@map("quotes")
 }
 
+model TagsDb {
+  id          String   @id @default(uuid())
+  clientJId   String   @unique
+  createdDate DateTime?
+  displayName String?
+  mainPhones  String?
+  emails      String?
+  tags        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientJId])
+  @@map("customs_tags")
+}
+
 model Tag {
   id                  String   @id @default(uuid())
   jId                 String   @unique
