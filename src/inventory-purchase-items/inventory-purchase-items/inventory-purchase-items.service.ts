@@ -49,10 +49,10 @@ export class InventoryPurchaseItemsService {
         });
 
         if (item) {
-          const newIdealTotal = (item.idealTotalInventory || 0) + data.quantity;
+          const newTotalInventory = (item.totalInventory || 0) + data.quantity;
           await this.prisma.inventory.update({
             where: { id: itemId },
-            data: { idealTotalInventory: newIdealTotal },
+            data: { totalInventory: newTotalInventory },
           });
         }
       }

@@ -872,6 +872,7 @@ model InventoryPurchase {
   quantity    Int      @default(1)
   purchasedAt String   @map("purchased_at")
   notes       String?  @map("notes")
+  totalPrice  String?  @map("total_price")
   createdAt   DateTime @default(now()) @map("created_at")
 
   user User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
