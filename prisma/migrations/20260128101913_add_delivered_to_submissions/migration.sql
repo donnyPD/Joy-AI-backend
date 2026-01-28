@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "inventory_form_submissions" ADD COLUMN IF NOT EXISTS "delivered" BOOLEAN NOT NULL DEFAULT false;

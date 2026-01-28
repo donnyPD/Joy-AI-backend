@@ -54,6 +54,16 @@ export class InventoryCategoriesService {
   async create(data: Prisma.InventoryCategoryCreateInput, userId: string): Promise<InventoryCategory> {
     try {
       const { user, ...dataWithoutUser } = data as any;
+      const categoryName = (dataWithoutUser.name as string)?.trim();
+      
+      // Check if category with same name already exists for this user
+      if (categoryName) {
+        const existing = await this.findByName(categoryName, userId);
+        if (existing) {
+          throw new BadRequestException(`A category with the name "${categoryName}" already exists. Please choose a different name.`);
+        }
+      }
+
       const category = await this.prisma.inventoryCategory.create({
         data: {
           ...dataWithoutUser,
@@ -63,6 +73,14 @@ export class InventoryCategoriesService {
       this.logger.log(`Created inventory category: ${category.id}`);
       return category;
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      // Handle Prisma unique constraint violation as fallback
+      if (error.code === 'P2002') {
+        const categoryName = (data as any).name?.trim() || 'this name';
+        throw new BadRequestException(`A category with the name "${categoryName}" already exists. Please choose a different name.`);
+      }
       this.logger.error(`Error creating inventory category: ${error.message}`, error.stack);
       throw error;
     }

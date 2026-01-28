@@ -148,6 +148,19 @@ export class InventoryPurchaseItemsService {
     }
   }
 
+  // Check if orderId exists for user
+  async orderIdExists(orderId: string, userId: string): Promise<boolean> {
+    try {
+      const count = await this.prisma.inventoryPurchase.count({
+        where: { orderId, userId } as any,
+      });
+      return count > 0;
+    } catch (error) {
+      this.logger.error(`Error checking orderId existence: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
   // Get available months from purchases
   async getAvailableMonths(userId: string): Promise<Array<{ month: number; year: number }>> {
     try {
