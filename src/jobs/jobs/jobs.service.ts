@@ -756,10 +756,25 @@ export class JobsService {
         ', ',
       )}"`,
     );
-    await this.prisma.client.update({
-      where: { jId: clientJId },
-      data: { tags: updatedClientTagsList.join(', '), lostRecurring: true, isRecurring: false } as any,
-    });
+
+    if (!existingClient) {
+      this.logger.warn(
+        `Lost recurring: client ${clientJId} not found in DB; creating client record.`,
+      );
+      await this.prisma.client.create({
+        data: {
+          jId: clientJId,
+          tags: updatedClientTagsList.join(', '),
+          lostRecurring: true,
+          isRecurring: false,
+        } as any,
+      });
+    } else {
+      await this.prisma.client.update({
+        where: { jId: clientJId },
+        data: { tags: updatedClientTagsList.join(', '), lostRecurring: true, isRecurring: false } as any,
+      });
+    }
 
     this.logger.log(`✅ Lost recurring tags applied for client: ${clientJId}`);
   }
