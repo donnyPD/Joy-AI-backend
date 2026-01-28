@@ -603,10 +603,10 @@ export class JobsService {
     console.log('🔍 [TAGS DEBUG] Title parts after split:', parts);
     console.log('🔍 [TAGS DEBUG] Parts count:', parts.length);
     
-    if (parts.length >= 3) {
+    if (parts.length >= 4) {
       console.log('✅ [TAGS DEBUG] Title has expected format (3+ parts), extracting Zone/Frequency');
       
-      const namePart = parts[4]?.trim();
+      const namePart = parts[3]?.trim();
       if (namePart) {
         newTags.push(namePart);
         console.log(`🔍 [TAGS DEBUG] Added name tag from title: "${namePart}"`);
@@ -775,7 +775,7 @@ export class JobsService {
       where: { jId: jobId },
       data: {
         closedDate: new Date().toISOString().split('T')[0],
-        jobStatus: job.jobStatus || 'closed',
+        jobStatus: 'closed',
       },
     });
 
@@ -824,7 +824,14 @@ export class JobsService {
       },
     });
 
-    const updatedClientTagsList = this.buildLostRecurringTags(client?.tags);
+    if (!client) {
+      this.logger.warn(
+        `Lost recurring fallback: client not found for jId ${clientJId}. Skipping client update.`,
+      );
+      return;
+    }
+
+    const updatedClientTagsList = this.buildLostRecurringTags(client.tags);
     await this.prisma.client.update({
       where: { jId: clientJId },
       data: {

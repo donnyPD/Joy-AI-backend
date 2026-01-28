@@ -87,6 +87,19 @@ export class ApiController {
     ) {
       throw new BadRequestException('No updatable fields provided');
     }
+    if (lostRecurring !== undefined && typeof lostRecurring !== 'boolean') {
+      throw new BadRequestException('lostRecurring must be a boolean');
+    }
+    if (isRecurring !== undefined && typeof isRecurring !== 'boolean') {
+      throw new BadRequestException('isRecurring must be a boolean');
+    }
+    if (
+      whyCancelled !== undefined &&
+      whyCancelled !== null &&
+      typeof whyCancelled !== 'string'
+    ) {
+      throw new BadRequestException('whyCancelled must be a string or null');
+    }
 
     const updated = await this.clientsService.updateClientById(id, {
       whyCancelled,
