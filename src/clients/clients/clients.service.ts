@@ -175,6 +175,21 @@ export class ClientsService {
     return this.prisma.client.count();
   }
 
+  async updateClientById(id: string, data: { whyCancelled?: string | null; lostRecurring?: boolean; isRecurring?: boolean }) {
+    if (!id) {
+      throw new Error('Client ID is required');
+    }
+
+    return this.prisma.client.update({
+      where: { id },
+      data: {
+        ...(data.whyCancelled !== undefined ? { whyCancelled: data.whyCancelled } : {}),
+        ...(data.lostRecurring !== undefined ? { lostRecurring: data.lostRecurring } : {}),
+        ...(data.isRecurring !== undefined ? { isRecurring: data.isRecurring } : {}),
+      },
+    });
+  }
+
   private transformJobberData(jobberClient: any) {
     // Extract phones by type
     const extractPhone = (phones: any[], type: string): string => {

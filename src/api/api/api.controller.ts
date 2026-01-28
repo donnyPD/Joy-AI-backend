@@ -76,6 +76,27 @@ export class ApiController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('clients/:id')
+  async updateClient(@Param('id') id: string, @Body() body: any) {
+    const { whyCancelled, lostRecurring, isRecurring } = body || {};
+    if (
+      whyCancelled === undefined &&
+      lostRecurring === undefined &&
+      isRecurring === undefined
+    ) {
+      throw new BadRequestException('No updatable fields provided');
+    }
+
+    const updated = await this.clientsService.updateClientById(id, {
+      whyCancelled,
+      lostRecurring,
+      isRecurring,
+    });
+
+    return { success: true, client: updated };
+  }
+
   @Get('sync-status')
   async getSyncStatus() {
     const totalClients = await this.clientsService.count();
