@@ -942,6 +942,7 @@ export class ApiController {
         pricePerUnit,
         threshold,
         idealTotalInventory,
+        preferredStore,
       } = data;
 
       if (!name || !type || !categoryId) {
@@ -961,7 +962,7 @@ export class ApiController {
       }, 0);
 
       // Create the inventory item - ported exact logic
-      const newItem = await this.inventoryService.create({
+      const createData: any = {
         name,
         type,
         category: { connect: { id: categoryId } },
@@ -971,7 +972,16 @@ export class ApiController {
         threshold: threshold || 3,
         idealTotalInventory: idealTotalInventory !== undefined ? idealTotalInventory : 0,
         rowNumber: maxRowNumber + 1,
-      }, userId);
+      }
+
+      // Only include preferredStore if it's provided and not empty
+      if (preferredStore !== undefined && preferredStore !== null && preferredStore.trim() !== '') {
+        createData.preferredStore = preferredStore.trim()
+      } else {
+        createData.preferredStore = null
+      }
+
+      const newItem = await this.inventoryService.create(createData, userId);
 
       return newItem;
     } catch (error) {
@@ -1098,6 +1108,10 @@ export class ApiController {
       if (!existingSnapshot) {
         // Create snapshot for previous month using current inventory data
         const inventoryItems = await this.inventoryService.findAll(userId);
+        // Skip creating empty snapshots for new accounts with no inventory
+        if (inventoryItems.length === 0) {
+          return { created: false };
+        }
         const snapshotData = inventoryItems.map((item) => ({
           name: item.name,
           type: item.type,
@@ -1240,18 +1254,40 @@ export class ApiController {
       }
 
       // Transform purchases to Prisma format
-      const purchaseData = purchases.map((p: any) => ({
-        orderId: p.orderId || `LEGACY-${Date.now()}-${Math.random()}`,
-        itemName: p.itemName,
-        orderedFrom: p.orderedFrom,
-        amount: p.amount,
-        quantity: p.quantity || 1,
-        purchasedAt: p.purchasedAt,
-        notes: p.notes || null,
-        ...(p.itemId ? { item: { connect: { id: p.itemId } } } : {}),
-      }));
+      const purchaseData = purchases.map((p: any) => {
+        const purchase: any = {
+          orderId: p.orderId || `LEGACY-${Date.now()}-${Math.random()}`,
+          itemName: p.itemName,
+          orderedFrom: p.orderedFrom,
+          amount: p.amount,
+          quantity: p.quantity || 1,
+          purchasedAt: p.purchasedAt,
+          notes: p.notes || null,
+          ...(p.itemId ? { item: { connect: { id: p.itemId } } } : {}),
+        };
+        
+        // Only include totalPrice if it's provided and not empty
+        if (p.totalPrice !== undefined && p.totalPrice !== null && p.totalPrice !== '') {
+          purchase.totalPrice = String(p.totalPrice);
+        } else {
+          purchase.totalPrice = null;
+        }
+        
+        return purchase;
+      });
+      console.log('Purchase data:', purchaseData);
 
       const created = await this.inventoryPurchaseItemsService.createMany(purchaseData, userId);
+
+      // Log to verify totalPrice is included in response
+      if (created.length > 0) {
+        console.log('Created purchases with totalPrice:', created.map(p => ({ 
+          id: p.id, 
+          orderId: p.orderId, 
+          itemName: p.itemName, 
+          totalPrice: (p as any).totalPrice 
+        })));
+      }
 
       // If technician is specified, also create InventoryTechnicianPurchase records
       if (technicianName && technicianName.trim()) {
@@ -1633,7 +1669,142 @@ export class ApiController {
       if (!userId) {
         throw new Error('User ID not found in request');
       }
-      const submission = await this.inventoryFormSubmissionsService.update(id, data, userId);
+
+      // Fetch existing submission to check for delivered change
+      const existing = await this.inventoryFormSubmissionsService.findOne(id, userId);
+      if (!existing) {
+        throw new NotFoundException(`Inventory form submission with ID ${id} not found`);
+      }
+
+      // Check if delivered is being changed
+      const oldDelivered = !!existing.delivered;
+      
+      // Validate delivered is a boolean if present
+      if (data.delivered !== undefined && typeof data.delivered !== 'boolean') {
+        throw new BadRequestException('The "delivered" field must be a boolean value (true or false)');
+      }
+      
+      const newDelivered = data.delivered !== undefined ? data.delivered : oldDelivered;
+      const deliveredChanged = oldDelivered !== newDelivered;
+
+      // If delivered is not in the update or hasn't changed, just update normally
+      if (data.delivered === undefined || !deliveredChanged) {
+        const submission = await this.inventoryFormSubmissionsService.update(id, data, userId);
+        return submission;
+      }
+
+      // Delivery status changed - update submission and inventory in a transaction
+      const productSelections = existing.productSelections as Record<string, number> | null;
+      const toolSelections = existing.toolSelections as Record<string, number> | null;
+
+      // Collect product items with quantities (tools only affect totalRequested, not totalInventory)
+      const productItemsToUpdate: Array<{ name: string; quantity: number }> = [];
+
+      if (productSelections && typeof productSelections === 'object') {
+        for (const [itemName, quantity] of Object.entries(productSelections)) {
+          if (typeof quantity === 'number' && quantity > 0) {
+            productItemsToUpdate.push({ name: itemName, quantity });
+          }
+        }
+      }
+
+      // Determine if this submission was created via submitPublicInventoryForm
+      // Public form submissions have inventory decremented at creation time, so we should
+      // skip decrementing again when marking as delivered. We detect this by checking if
+      // the submission was created with delivered=false (default for public form) and
+      // has productSelections (which would have been decremented at creation).
+      const isPublicFormSubmission = !existing.delivered && 
+        productSelections && 
+        typeof productSelections === 'object' && 
+        Object.keys(productSelections).length > 0;
+
+      // Run transaction to update submission and inventory
+      const submission = await this.prisma.$transaction(async (tx) => {
+        // Update the submission
+        const updatedSubmission = await tx.inventoryFormSubmission.update({
+          where: { id },
+          data,
+        });
+
+        // Update inventory items (only products affect totalInventory, tools only affect totalRequested)
+        for (const { name: itemName, quantity } of productItemsToUpdate) {
+          const inventoryItem = await tx.inventory.findFirst({
+            where: { userId, name: itemName },
+          });
+
+          if (inventoryItem) {
+            const currentTotal = inventoryItem.totalInventory || 0;
+            let newTotal: number;
+
+            if (newDelivered) {
+              // Marking as delivered: goods handed out, reduce stock
+              // BUT: If this is a public form submission, inventory was already decremented
+              // at creation time, so skip the decrement to avoid double-decrementing
+              if (isPublicFormSubmission) {
+                // Public form submission: inventory already decremented at creation, skip
+                newTotal = currentTotal;
+              } else {
+                // Regular submission: decrement inventory when marking as delivered
+                newTotal = Math.max(0, currentTotal - quantity);
+              }
+            } else {
+              // Unmarking delivered: reverse, add quantity back
+              // For public form submissions, inventory was already decremented at creation,
+              // so unmarking delivered should NOT change inventory (items are still taken, just not confirmed delivered)
+              if (isPublicFormSubmission) {
+                // Public form submission: no inventory change when unmarking delivered
+                // (items were already taken at creation, unmarking just changes status)
+                newTotal = currentTotal;
+              } else {
+                // Regular submission: add back what was decremented when marked as delivered
+                newTotal = currentTotal + quantity;
+              }
+            }
+
+            await tx.inventory.update({
+              where: { id: inventoryItem.id },
+              data: { totalInventory: newTotal },
+            });
+          } else {
+            // Item not found - log but continue with other items
+            this.logger.warn(
+              `Inventory item "${itemName}" not found for user ${userId} when updating delivery status`,
+            );
+          }
+        }
+
+        // Update tool selections totalRequested (tools don't affect totalInventory)
+        if (toolSelections && typeof toolSelections === 'object') {
+          for (const [itemName, quantity] of Object.entries(toolSelections)) {
+            if (typeof quantity === 'number' && quantity > 0) {
+              const inventoryItem = await tx.inventory.findFirst({
+                where: { userId, name: itemName },
+              });
+
+              if (inventoryItem) {
+                const currentRequested = inventoryItem.totalRequested || 0;
+                let newRequested: number;
+
+                if (newDelivered) {
+                  // Marking as delivered: reduce requested (tools were handed out)
+                  newRequested = Math.max(0, currentRequested - quantity);
+                } else {
+                  // Unmarking delivered: increase requested (tools returned)
+                  newRequested = currentRequested + quantity;
+                }
+
+                await tx.inventory.update({
+                  where: { id: inventoryItem.id },
+                  data: { totalRequested: newRequested },
+                });
+              }
+            }
+          }
+        }
+
+        return updatedSubmission;
+      });
+
       return submission;
     } catch (error) {
       console.error('Error updating inventory form submission:', error);
