@@ -550,12 +550,16 @@ export class JobsService {
 
       const isRecurringJob =
         jobberJob.jobType && jobberJob.jobType !== 'ONE_OFF' && jobberJob.jobType !== 'ONE_TIME';
-      if (isRecurringJob) {
-        const status = String(jobberJob.jobStatus || '').toLowerCase();
-        const isClosedStatus = ['closed', 'archived', 'canceled', 'cancelled'].includes(status);
-        if (!isClosedStatus) {
-          await this.prisma.client.updateMany({
-            where: { jId: clientJId, lostRecurring: false },
+      if (isRecurringJob && !isClosedStatus) {
+        // Use update instead of updateMany since clientJId is unique
+        // Only update if client exists and lostRecurring is not true
+        const existingClient = await this.prisma.client.findUnique({
+          where: { jId: clientJId },
+          select: { lostRecurring: true },
+        });
+        if (existingClient && existingClient.lostRecurring !== true) {
+          await this.prisma.client.update({
+            where: { jId: clientJId },
             data: { isRecurring: true, lostRecurring: false },
           });
         }
