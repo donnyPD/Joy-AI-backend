@@ -1644,7 +1644,13 @@ export class ApiController {
 
       // Check if delivered is being changed
       const oldDelivered = !!existing.delivered;
-      const newDelivered = data.delivered !== undefined ? !!data.delivered : oldDelivered;
+      
+      // Validate delivered is a boolean if present
+      if (data.delivered !== undefined && typeof data.delivered !== 'boolean') {
+        throw new BadRequestException('The "delivered" field must be a boolean value (true or false)');
+      }
+      
+      const newDelivered = data.delivered !== undefined ? data.delivered : oldDelivered;
       const deliveredChanged = oldDelivered !== newDelivered;
 
       // If delivered is not in the update or hasn't changed, just update normally
@@ -1657,24 +1663,26 @@ export class ApiController {
       const productSelections = existing.productSelections as Record<string, number> | null;
       const toolSelections = existing.toolSelections as Record<string, number> | null;
 
-      // Collect all items with quantities
-      const itemsToUpdate: Array<{ name: string; quantity: number }> = [];
+      // Collect product items with quantities (tools only affect totalRequested, not totalInventory)
+      const productItemsToUpdate: Array<{ name: string; quantity: number }> = [];
 
       if (productSelections && typeof productSelections === 'object') {
         for (const [itemName, quantity] of Object.entries(productSelections)) {
           if (typeof quantity === 'number' && quantity > 0) {
-            itemsToUpdate.push({ name: itemName, quantity });
+            productItemsToUpdate.push({ name: itemName, quantity });
           }
         }
       }
 
-      if (toolSelections && typeof toolSelections === 'object') {
-        for (const [itemName, quantity] of Object.entries(toolSelections)) {
-          if (typeof quantity === 'number' && quantity > 0) {
-            itemsToUpdate.push({ name: itemName, quantity });
-          }
-        }
-      }
+      // Determine if this submission was created via submitPublicInventoryForm
+      // Public form submissions have inventory decremented at creation time, so we should
+      // skip decrementing again when marking as delivered. We detect this by checking if
+      // the submission was created with delivered=false (default for public form) and
+      // has productSelections (which would have been decremented at creation).
+      const isPublicFormSubmission = !existing.delivered && 
+        productSelections && 
+        typeof productSelections === 'object' && 
+        Object.keys(productSelections).length > 0;
 
       // Run transaction to update submission and inventory
       const submission = await this.prisma.$transaction(async (tx) => {
@@ -1684,8 +1692,8 @@ export class ApiController {
           data,
         });
 
-        // Update inventory items
-        for (const { name: itemName, quantity } of itemsToUpdate) {
+        // Update inventory items (only products affect totalInventory, tools only affect totalRequested)
+        for (const { name: itemName, quantity } of productItemsToUpdate) {
           const inventoryItem = await tx.inventory.findFirst({
             where: { userId, name: itemName },
           });
@@ -1696,10 +1704,27 @@ export class ApiController {
 
             if (newDelivered) {
               // Marking as delivered: goods handed out, reduce stock
-              newTotal = Math.max(0, currentTotal - quantity);
+              // BUT: If this is a public form submission, inventory was already decremented
+              // at creation time, so skip the decrement to avoid double-decrementing
+              if (isPublicFormSubmission) {
+                // Public form submission: inventory already decremented at creation, skip
+                newTotal = currentTotal;
+              } else {
+                // Regular submission: decrement inventory when marking as delivered
+                newTotal = Math.max(0, currentTotal - quantity);
+              }
             } else {
               // Unmarking delivered: reverse, add quantity back
-              newTotal = currentTotal + quantity;
+              // For public form submissions, inventory was already decremented at creation,
+              // so unmarking delivered should NOT change inventory (items are still taken, just not confirmed delivered)
+              if (isPublicFormSubmission) {
+                // Public form submission: no inventory change when unmarking delivered
+                // (items were already taken at creation, unmarking just changes status)
+                newTotal = currentTotal;
+              } else {
+                // Regular submission: add back what was decremented when marked as delivered
+                newTotal = currentTotal + quantity;
+              }
             }
 
             await tx.inventory.update({
@@ -1711,6 +1736,35 @@ export class ApiController {
             this.logger.warn(
               `Inventory item "${itemName}" not found for user ${userId} when updating delivery status`,
             );
+          }
+        }
+
+        // Update tool selections totalRequested (tools don't affect totalInventory)
+        if (toolSelections && typeof toolSelections === 'object') {
+          for (const [itemName, quantity] of Object.entries(toolSelections)) {
+            if (typeof quantity === 'number' && quantity > 0) {
+              const inventoryItem = await tx.inventory.findFirst({
+                where: { userId, name: itemName },
+              });
+
+              if (inventoryItem) {
+                const currentRequested = inventoryItem.totalRequested || 0;
+                let newRequested: number;
+
+                if (newDelivered) {
+                  // Marking as delivered: reduce requested (tools were handed out)
+                  newRequested = Math.max(0, currentRequested - quantity);
+                } else {
+                  // Unmarking delivered: increase requested (tools returned)
+                  newRequested = currentRequested + quantity;
+                }
+
+                await tx.inventory.update({
+                  where: { id: inventoryItem.id },
+                  data: { totalRequested: newRequested },
+                });
+              }
+            }
           }
         }
 
