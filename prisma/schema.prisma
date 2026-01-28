@@ -85,6 +85,9 @@ model Client {
   id                           String    @id @default(uuid())
   jId                          String    @unique
   createdDate                  DateTime?
+  isRecurring                  Boolean   @default(false)
+  lostRecurring                Boolean   @default(false)
+  whyCancelled                 String?
   isCompany                    Boolean   @default(false)
   displayName                  String?
   companyName                  String?

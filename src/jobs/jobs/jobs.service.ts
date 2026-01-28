@@ -219,7 +219,7 @@ export class JobsService {
     }
   }
 
-  async handleJobClosed(webhookPayload: any) {
+  async handleJobClosed(webhookPayload: any): Promise<any> {
     try {
       const jobId = webhookPayload.data?.webHookEvent?.itemId;
       if (!jobId) {
@@ -230,12 +230,25 @@ export class JobsService {
 
       // Get user-specific access token if available
       const accessToken = await this.getAccessTokenForWebhook(webhookPayload);
+      if (!accessToken) {
+        this.logger.warn('JOB_CLOSED: Missing access token, using DB fallback.');
+        return this.getFallbackJobOrThrow(jobId);
+      }
 
-      const jobberData = await this.jobberJobsService.getJobDetails(jobId, accessToken);
+      let jobberData: any;
+      try {
+        jobberData = await this.jobberJobsService.getJobDetails(jobId, accessToken);
+      } catch (error: any) {
+        this.logger.warn(
+          `JOB_CLOSED: Failed to fetch Jobber job (${error?.message || 'unknown error'}). Using DB fallback.`,
+        );
+        return this.getFallbackJobOrThrow(jobId);
+      }
       const jobberJob = jobberData.data?.job;
 
       if (!jobberJob) {
-        throw new Error('Job not found in Jobber');
+        this.logger.warn('JOB_CLOSED: Job not found in Jobber response. Using DB fallback.');
+        return this.getFallbackJobOrThrow(jobId);
       }
 
       const jobData = this.transformJobberData(jobberJob);
@@ -246,6 +259,15 @@ export class JobsService {
         update: jobData,
         create: jobData,
       });
+
+      const isRecurring =
+        jobberJob.jobType && jobberJob.jobType !== 'ONE_OFF' && jobberJob.jobType !== 'ONE_TIME';
+      if (isRecurring) {
+        console.log(`🔍 [LOST RECURRING] Job closed is recurring. jobId=${jobId}`);
+        await this.applyLostRecurringTags(jobberJob, jobData).catch((error) => {
+          this.logger.warn('Failed to apply lost recurring tags (non-critical):', error?.message);
+        });
+      }
 
       this.logger.log(`✅ Job closed: ${job.jId}`);
       return job;
@@ -467,6 +489,12 @@ export class JobsService {
     console.log('🔍 [TAGS DEBUG] clientEmail:', clientEmail);
     
     try {
+      const status = String(jobberJob.jobStatus || '').toLowerCase();
+      const isClosedStatus = ['closed', 'archived', 'canceled', 'cancelled'].includes(status);
+      if (isClosedStatus) {
+        console.log(`🔍 [TAGS DEBUG] Job status is "${status}", skipping tag sync`);
+        return;
+      }
       // Generate new tags from job title
       console.log('🔍 [TAGS DEBUG] Calling generateTagsFromJobTitle...');
       const newTags = this.generateTagsFromJobTitle(jobberJob.title, jobberJob.jobType);
@@ -520,6 +548,23 @@ export class JobsService {
         tags: newTags,
       });
 
+      const isRecurringJob =
+        jobberJob.jobType && jobberJob.jobType !== 'ONE_OFF' && jobberJob.jobType !== 'ONE_TIME';
+      if (isRecurringJob && !isClosedStatus) {
+        // Use update instead of updateMany since clientJId is unique
+        // Only update if client exists and lostRecurring is not true
+        const existingClient = await this.prisma.client.findUnique({
+          where: { jId: clientJId },
+          select: { lostRecurring: true },
+        });
+        if (existingClient && existingClient.lostRecurring !== true) {
+          await this.prisma.client.update({
+            where: { jId: clientJId },
+            data: { isRecurring: true, lostRecurring: false },
+          });
+        }
+      }
+
       console.log(`✅ [TAGS DEBUG] Tag sync completed for job: ${jobberJob.id}`);
       this.logger.log(`✅ Tags generated and synced for job: ${jobberJob.id}`);
     } catch (error) {
@@ -559,9 +604,15 @@ export class JobsService {
     console.log('🔍 [TAGS DEBUG] Title parts after split:', parts);
     console.log('🔍 [TAGS DEBUG] Parts count:', parts.length);
     
-    if (parts.length >= 3) {
+    if (parts.length >= 4) {
       console.log('✅ [TAGS DEBUG] Title has expected format (3+ parts), extracting Zone/Frequency');
       
+      const namePart = parts[3]?.trim();
+      if (namePart) {
+        newTags.push(namePart);
+        console.log(`🔍 [TAGS DEBUG] Added name tag from title: "${namePart}"`);
+      }
+
       // Extract zone number from parts[2] (e.g., "Zone 2" -> "2")
       const zoneMatch = parts[2]?.match(/Zone\s+(\d+)/i);
       const zoneNumber = zoneMatch ? zoneMatch[1] : '';
@@ -647,6 +698,217 @@ export class JobsService {
 
     console.log('🔍 [TAGS DEBUG] Final generated tags:', newTags);
     return newTags;
+  }
+
+  private async applyLostRecurringTags(jobberJob: any, jobData: any) {
+    const clientJId = jobberJob?.client?.id || jobData?.clientJId;
+    if (!clientJId) {
+      console.log('❌ [LOST RECURRING] Missing clientJId; skipping tags update.');
+      this.logger.warn('Lost recurring: clientJId missing; skipping tags update.');
+      return;
+    }
+
+    const client = jobberJob.client || {};
+    const displayName =
+      [client.firstName, client.lastName].filter(Boolean).join(' ') || client.displayName || '';
+    const mainPhones = client?.phones?.map((p: any) => p?.number).filter(Boolean).join(', ') || '';
+    const emails = client?.emails?.map((e: any) => e?.address).filter(Boolean).join(', ') || '';
+
+    const existingTagsDb = await this.prisma.tagsDb.findUnique({
+      where: { clientJId },
+    });
+
+    const updatedTagsDbList = this.buildLostRecurringTags(existingTagsDb?.tags);
+    const updatedTagsDbString = updatedTagsDbList.join(', ');
+    const createdDateValue =
+      existingTagsDb?.createdDate || this.safeParseDate(jobberJob?.createdAt) || null;
+
+    console.log(
+      `🔍 [LOST RECURRING] TagsDb before="${existingTagsDb?.tags || ''}" after="${updatedTagsDbString}"`,
+    );
+
+    await this.prisma.tagsDb.upsert({
+      where: { clientJId },
+      create: {
+        clientJId,
+        displayName: displayName || null,
+        mainPhones: mainPhones || null,
+        emails: emails || null,
+        createdDate: createdDateValue,
+        tags: updatedTagsDbString,
+      },
+      update: {
+        displayName: displayName || existingTagsDb?.displayName,
+        mainPhones: mainPhones || existingTagsDb?.mainPhones,
+        emails: emails || existingTagsDb?.emails,
+        createdDate: createdDateValue,
+        tags: updatedTagsDbString,
+      },
+    });
+
+    const existingClient = await this.prisma.client.findUnique({
+      where: { jId: clientJId },
+      select: { tags: true },
+    });
+
+    const updatedClientTagsList = this.buildLostRecurringTags(existingClient?.tags);
+    console.log(
+      `🔍 [LOST RECURRING] Client tags before="${existingClient?.tags || ''}" after="${updatedClientTagsList.join(
+        ', ',
+      )}"`,
+    );
+
+    if (!existingClient) {
+      this.logger.warn(
+        `Lost recurring: client ${clientJId} not found in DB; creating client record.`,
+      );
+      await this.prisma.client.create({
+        data: {
+          jId: clientJId,
+          tags: updatedClientTagsList.join(', '),
+          lostRecurring: true,
+          isRecurring: false,
+        },
+      });
+    } else {
+      await this.prisma.client.update({
+        where: { jId: clientJId },
+        data: { tags: updatedClientTagsList.join(', '), lostRecurring: true, isRecurring: false },
+      });
+    }
+
+    this.logger.log(`✅ Lost recurring tags applied for client: ${clientJId}`);
+  }
+
+  private async handleJobClosedFallback(jobId: string): Promise<any | null> {
+    const job = await this.prisma.job.findUnique({ where: { jId: jobId } });
+    if (!job) {
+      this.logger.warn(`JOB_CLOSED fallback: job not found in DB for ${jobId}`);
+      return null;
+    }
+
+    const updatedJob = await this.prisma.job.update({
+      where: { jId: jobId },
+      data: {
+        closedDate: new Date().toISOString().split('T')[0],
+        jobStatus: 'closed',
+      },
+    });
+
+    const isRecurring =
+      job.jobType && job.jobType !== 'ONE_OFF' && job.jobType !== 'ONE_TIME';
+    if (isRecurring && job.clientJId) {
+      await this.applyLostRecurringTagsFromClientId(job.clientJId, job.createdAt).catch((error) => {
+        this.logger.warn('Failed to apply lost recurring tags in fallback (non-critical):', error?.message);
+      });
+    }
+
+    return updatedJob;
+  }
+
+  private async getFallbackJobOrThrow(jobId: string): Promise<any> {
+    const fallbackJob = await this.handleJobClosedFallback(jobId);
+    if (!fallbackJob) {
+      throw new Error(`Job ${jobId} not found in database`);
+    }
+    return fallbackJob;
+  }
+
+  private async applyLostRecurringTagsFromClientId(
+    clientJId: string,
+    createdDate?: Date | string | null,
+  ) {
+    const existingTagsDb = await this.prisma.tagsDb.findUnique({
+      where: { clientJId },
+    });
+    const client = await this.prisma.client.findUnique({
+      where: { jId: clientJId },
+      select: { displayName: true, mainPhone: true, email: true, tags: true },
+    });
+
+    const updatedTagsDbList = this.buildLostRecurringTags(existingTagsDb?.tags);
+    const updatedTagsDbString = updatedTagsDbList.join(', ');
+    const createdDateValue =
+      existingTagsDb?.createdDate || this.safeParseDate(createdDate) || null;
+
+    await this.prisma.tagsDb.upsert({
+      where: { clientJId },
+      create: {
+        clientJId,
+        displayName: existingTagsDb?.displayName || client?.displayName || null,
+        mainPhones: existingTagsDb?.mainPhones || client?.mainPhone || null,
+        emails: existingTagsDb?.emails || client?.email || null,
+        createdDate: createdDateValue,
+        tags: updatedTagsDbString,
+      },
+      update: {
+        displayName: existingTagsDb?.displayName || client?.displayName || null,
+        mainPhones: existingTagsDb?.mainPhones || client?.mainPhone || null,
+        emails: existingTagsDb?.emails || client?.email || null,
+        createdDate: createdDateValue,
+        tags: updatedTagsDbString,
+      },
+    });
+
+    if (!client) {
+      this.logger.warn(
+        `Lost recurring fallback: client not found for jId ${clientJId}. Skipping client update.`,
+      );
+      return;
+    }
+
+    const updatedClientTagsList = this.buildLostRecurringTags(client.tags);
+    await this.prisma.client.update({
+      where: { jId: clientJId },
+      data: {
+        tags: updatedClientTagsList.join(', '),
+        lostRecurring: true,
+        isRecurring: false,
+      },
+    });
+
+    this.logger.log(`✅ Lost recurring tags applied (fallback) for client: ${clientJId}`);
+  }
+
+  private buildLostRecurringTags(tags?: string | null): string[] {
+    const existing = this.parseTags(tags);
+    const removeSet = new Set(['recurring', 'monthly', 'bi-weekly', 'bi weekly', 'weekly', 'other']);
+    const filtered = existing.filter((tag) => !removeSet.has(tag.toLowerCase()));
+    return this.mergeTagsCaseInsensitive(filtered, ['Lost Recurring']);
+  }
+
+  private parseTags(tags?: string | null): string[] {
+    return (tags || '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+
+  private mergeTagsCaseInsensitive(existing: string[], incoming: string[]) {
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    const addTag = (tag: string) => {
+      const key = tag.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(tag);
+      }
+    };
+
+    existing.forEach(addTag);
+    incoming.forEach(addTag);
+
+    return result;
+  }
+
+  private safeParseDate(value?: Date | string | null): Date | undefined {
+    if (!value) return undefined;
+    if (value instanceof Date) {
+      return isNaN(value.getTime()) ? undefined : value;
+    }
+    const parsed = new Date(value);
+    return isNaN(parsed.getTime()) ? undefined : parsed;
   }
 
   private getCustomFieldByLabel(fields: any[], label: string): string {

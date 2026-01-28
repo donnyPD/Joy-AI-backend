@@ -76,6 +76,40 @@ export class ApiController {
     };
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('clients/:id')
+  async updateClient(@Param('id') id: string, @Body() body: any) {
+    const { whyCancelled, lostRecurring, isRecurring } = body || {};
+    if (
+      whyCancelled === undefined &&
+      lostRecurring === undefined &&
+      isRecurring === undefined
+    ) {
+      throw new BadRequestException('No updatable fields provided');
+    }
+    if (lostRecurring !== undefined && typeof lostRecurring !== 'boolean') {
+      throw new BadRequestException('lostRecurring must be a boolean');
+    }
+    if (isRecurring !== undefined && typeof isRecurring !== 'boolean') {
+      throw new BadRequestException('isRecurring must be a boolean');
+    }
+    if (
+      whyCancelled !== undefined &&
+      whyCancelled !== null &&
+      typeof whyCancelled !== 'string'
+    ) {
+      throw new BadRequestException('whyCancelled must be a string or null');
+    }
+
+    const updated = await this.clientsService.updateClientById(id, {
+      whyCancelled,
+      lostRecurring,
+      isRecurring,
+    });
+
+    return { success: true, client: updated };
+  }
+
   @Get('sync-status')
   async getSyncStatus() {
     const totalClients = await this.clientsService.count();
