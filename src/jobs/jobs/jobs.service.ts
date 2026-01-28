@@ -219,7 +219,7 @@ export class JobsService {
     }
   }
 
-  async handleJobClosed(webhookPayload: any) {
+  async handleJobClosed(webhookPayload: any): Promise<any> {
     try {
       const jobId = webhookPayload.data?.webHookEvent?.itemId;
       if (!jobId) {
@@ -232,8 +232,7 @@ export class JobsService {
       const accessToken = await this.getAccessTokenForWebhook(webhookPayload);
       if (!accessToken) {
         this.logger.warn('JOB_CLOSED: Missing access token, using DB fallback.');
-        await this.handleJobClosedFallback(jobId);
-        return { success: true, fallback: true };
+        return this.getFallbackJobOrThrow(jobId);
       }
 
       let jobberData: any;
@@ -243,15 +242,13 @@ export class JobsService {
         this.logger.warn(
           `JOB_CLOSED: Failed to fetch Jobber job (${error?.message || 'unknown error'}). Using DB fallback.`,
         );
-        await this.handleJobClosedFallback(jobId);
-        return { success: true, fallback: true };
+        return this.getFallbackJobOrThrow(jobId);
       }
       const jobberJob = jobberData.data?.job;
 
       if (!jobberJob) {
         this.logger.warn('JOB_CLOSED: Job not found in Jobber response. Using DB fallback.');
-        await this.handleJobClosedFallback(jobId);
-        return { success: true, fallback: true };
+        return this.getFallbackJobOrThrow(jobId);
       }
 
       const jobData = this.transformJobberData(jobberJob);
@@ -559,7 +556,7 @@ export class JobsService {
         if (!isClosedStatus) {
           await this.prisma.client.updateMany({
             where: { jId: clientJId, lostRecurring: false },
-            data: { isRecurring: true, lostRecurring: false } as any,
+            data: { isRecurring: true, lostRecurring: false },
           });
         }
       }
@@ -767,26 +764,26 @@ export class JobsService {
           tags: updatedClientTagsList.join(', '),
           lostRecurring: true,
           isRecurring: false,
-        } as any,
+        },
       });
     } else {
       await this.prisma.client.update({
         where: { jId: clientJId },
-        data: { tags: updatedClientTagsList.join(', '), lostRecurring: true, isRecurring: false } as any,
+        data: { tags: updatedClientTagsList.join(', '), lostRecurring: true, isRecurring: false },
       });
     }
 
     this.logger.log(`✅ Lost recurring tags applied for client: ${clientJId}`);
   }
 
-  private async handleJobClosedFallback(jobId: string) {
+  private async handleJobClosedFallback(jobId: string): Promise<any | null> {
     const job = await this.prisma.job.findUnique({ where: { jId: jobId } });
     if (!job) {
       this.logger.warn(`JOB_CLOSED fallback: job not found in DB for ${jobId}`);
-      return;
+      return null;
     }
 
-    await this.prisma.job.update({
+    const updatedJob = await this.prisma.job.update({
       where: { jId: jobId },
       data: {
         closedDate: new Date().toISOString().split('T')[0],
@@ -796,11 +793,21 @@ export class JobsService {
 
     const isRecurring =
       job.jobType && job.jobType !== 'ONE_OFF' && job.jobType !== 'ONE_TIME';
-    if (!isRecurring || !job.clientJId) {
-      return;
+    if (isRecurring && job.clientJId) {
+      await this.applyLostRecurringTagsFromClientId(job.clientJId, job.createdAt).catch((error) => {
+        this.logger.warn('Failed to apply lost recurring tags in fallback (non-critical):', error?.message);
+      });
     }
 
-    await this.applyLostRecurringTagsFromClientId(job.clientJId, job.createdAt);
+    return updatedJob;
+  }
+
+  private async getFallbackJobOrThrow(jobId: string): Promise<any> {
+    const fallbackJob = await this.handleJobClosedFallback(jobId);
+    if (!fallbackJob) {
+      throw new Error(`Job ${jobId} not found in database`);
+    }
+    return fallbackJob;
   }
 
   private async applyLostRecurringTagsFromClientId(
@@ -853,7 +860,7 @@ export class JobsService {
         tags: updatedClientTagsList.join(', '),
         lostRecurring: true,
         isRecurring: false,
-      } as any,
+      },
     });
 
     this.logger.log(`✅ Lost recurring tags applied (fallback) for client: ${clientJId}`);
